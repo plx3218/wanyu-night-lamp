@@ -22,13 +22,15 @@ GND    ─────────────  GND
 
 > 固件默认 `LED_PIN=7`、`NUMPIXELS=8`。如灯珠数量不同，改 `firmware/src/main.cpp` 的 `NUMPIXELS` 宏即可。
 
-## 接线示意
-
-（待补：手画拍照或 Fritzing 截图，放 `docs/images/wiring.jpg`）
-
 ## 实物照片
 
-（待补：建议 2–3 张——内部接线 1 张 + 成品点亮效果 2 张，放 `docs/images/`）
+<img src="images/3985a8e0b509370a2c9ba036991d2d3f.jpg" width="480">
+
+<img src="images/5364d098-d102-4cc2-a646-0e2fd65336c0.png" width="480">
+
+<img src="images/c58d43bb8dfba1a4516ce8e5fc4b4606.jpg" width="480">
+
+<img src="images/f71177a3d36017703e88d686f10be068.jpg" width="480">
 
 ## 烧录步骤
 
