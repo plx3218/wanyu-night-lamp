@@ -1,0 +1,37 @@
+# === Flutter / Dart ===
+software/she_nicest_app/build/
+software/she_nicest_app/.dart_tool/
+software/she_nicest_app/.flutter-plugins
+software/she_nicest_app/.flutter-plugins-dependencies
+software/she_nicest_app/.packages
+software/she_nicest_app/.pub/
+**/generated_plugin_registrant.dart
+
+# === PlatformIO ===
+firmware/.pio/
+firmware/.pioenvs/
+firmware/.vscode/
+
+# === Python ===
+server/__pycache__/
+**/*.pyc
+*.pyo
+.venv/
+venv/
+
+# === OS / IDE ===
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
+.vscode/
+
+# === 敏感信息（防止意外提交）===
+*.keystore
+*.jks
+key.properties
+.env
+*.env
+secrets.h
+# 不要把 APK / 构建产物 / WiFi 密码提交进来
+*.apk
