@@ -87,10 +87,10 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
 
     switch (s.extendCount) {
       case 0:
-        title = '到了计划的收尾时刻';
-        subtitle = '按 AI 计划到了收尾时刻。还想继续，还是准备慢慢收尾？';
+        title = '已经刷了一会儿';
+        subtitle = '到了计划的入睡提醒时间。还想继续，还是准备慢慢入睡？';
         primaryLabel = '再延时 $extMin 分钟';
-        secondaryLabel = '不用了，收尾';
+        secondaryLabel = '不用了，准备入睡';
       case 1:
         title = '还需要延时么';
         subtitle = '延时时间到了，如果还需要一点时间可以再延时。';
@@ -335,7 +335,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         children: [
           _PlanRow(icon: Icons.nights_stay_outlined, label: '明早起床', value: _fmt(plan.wakeTime)),
           const SizedBox(height: 8),
-          _PlanRow(icon: Icons.bedtime_rounded, label: '建议收尾', value: _fmt(plan.recommendedBedtime)),
+          _PlanRow(icon: Icons.bedtime_rounded, label: '建议入睡', value: _fmt(plan.recommendedBedtime)),
           const SizedBox(height: 8),
           _PlanRow(
               icon: Icons.timer_outlined,
@@ -362,14 +362,14 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         return Text(
             plan == null
                 ? '今晚计划已就绪，等你开始'
-                : '明早 ${_fmt(plan.wakeTime)} 起 · 目标 ${_fmt(plan.recommendedBedtime)} 前收尾',
+                : '明早 ${_fmt(plan.wakeTime)} 起 · 目标 ${_fmt(plan.recommendedBedtime)} 前入睡',
             style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w600, height: 1.3));
       case NightSessionState.observing:
         return const Text('温柔守护中，不必立刻停下来',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.w500));
       case NightSessionState.nudged:
-        return Text('到了计划的收尾时刻',
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w600));
+        return const Text('已经刷了一会儿',
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w600));
       case NightSessionState.replacing:
         return Text('换个温柔的方式：${plan?.replacementActivity ?? '听听音乐'}',
             style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w600, height: 1.3));
@@ -410,14 +410,14 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         return Text(plan?.displayThresholdText() ?? '', style: style);
       case NightSessionState.nudged:
         return Text(
-            '按 AI 计划到了收尾时刻。还想继续，还是准备慢慢收尾？替代活动可以是${plan?.replacementActivity ?? '音乐'}。',
+            '到了计划的入睡提醒时间。还想继续，还是准备慢慢入睡？替代活动可以是${plan?.replacementActivity ?? '音乐'}。',
             style: style);
       case NightSessionState.replacing:
         return const Text('不用硬逼自己立刻睡。找一件能让你慢慢安静下来的事。', style: style);
       case NightSessionState.extending: {
         final sec = AppController.minutesToDemoSeconds(s.extensionMinutesLeft);
         return Text(
-            '这次再延长 ${s.extensionMinutesLeft} 分钟（现场约 $sec 秒），到点自动收尾进 5% 夜灯。已延长 ${s.extendCount} 次。',
+            '这次再延长 ${s.extensionMinutesLeft} 分钟（现场约 $sec 秒），到点自动进入入睡陪伴，切换至 5% 夜灯。已延长 ${s.extendCount} 次。',
             style: style);
       }
       case NightSessionState.muted:
@@ -426,7 +426,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
         return Text(
             plan == null
                 ? '灯光已调成 5% 夜灯模式'
-                : '已按 AI 计划的 ${_fmt(plan.recommendedBedtime)} 收尾。5% 夜灯开启 · 明早 ${_fmt(plan.wakeTime)} 见。',
+                : '已按计划在 ${_fmt(plan.recommendedBedtime)} 进入入睡陪伴。5% 夜灯开启 · 明早 ${_fmt(plan.wakeTime)} 见。',
             style: style);
     }
   }
@@ -548,7 +548,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                   const SizedBox(height: 10),
                   _SheetTile(
                     icon: Icons.self_improvement_rounded,
-                    title: '换一下：$repl',
+                    title: '换个方式放松',
                     subtitle: '温柔陪你慢慢安静下来',
                     color: AppColors.lake,
                     onTap: () => Navigator.pop(context, 'replace'),
@@ -556,7 +556,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                   const SizedBox(height: 10),
                   _SheetTile(
                     icon: Icons.bedtime_rounded,
-                    title: '准备收尾 / 晚安',
+                    title: '准备入睡 / 晚安',
                     subtitle: '今天就到这里，灯光变暗陪你',
                     color: AppColors.dusk,
                     onTap: () => Navigator.pop(context, 'finish'),
@@ -752,7 +752,7 @@ class _SessionScreenState extends State<SessionScreen> with WidgetsBindingObserv
                 if (mounted) Navigator.popUntil(context, ModalRoute.withName('/'));
               },
               icon: const Icon(Icons.bedtime_rounded),
-              label: const Text('准备收尾 / 晚安'),
+              label: const Text('准备入睡 / 晚安'),
             ),
           ],
         );

@@ -7,8 +7,21 @@ class AiService {
 
   final String serverUrl;
   final List<Map<String, String>> _history = [];
+  String? _profileContext;
+  bool _profileInjected = false;
+
+  /// 登录/建档后注入用户档案上下文；首轮对话自动带入，clearHistory 后重新注入
+  void setProfileContext(String? context) {
+    _profileContext = context;
+    _profileInjected = false;
+  }
 
   Stream<String> chat(String userMessage) async* {
+    if (_profileContext != null && !_profileInjected && _history.isEmpty) {
+      _history.add({'role': 'user', 'content': _profileContext!});
+      _history.add({'role': 'assistant', 'content': '好，我已经记住你的睡眠习惯了。今晚想怎么安排？'});
+      _profileInjected = true;
+    }
     _history.add({'role': 'user', 'content': userMessage});
 
     final request = http.Request('POST', Uri.parse('$serverUrl/chat'))
@@ -37,5 +50,8 @@ class AiService {
     _history.add({'role': 'assistant', 'content': buffer.toString()});
   }
 
-  void clearHistory() => _history.clear();
+  void clearHistory() {
+    _history.clear();
+    _profileInjected = false;
+  }
 }

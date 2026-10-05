@@ -4,9 +4,15 @@ import 'app_controller.dart';
 import 'screens/chat_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/lamp_screen.dart';
+import 'screens/login_screen.dart';
 import 'screens/plan_screen.dart';
+import 'screens/profile_choice_screen.dart';
+import 'screens/register_screen.dart';
 import 'screens/session_screen.dart';
+import 'screens/settings_screen.dart';
+import 'screens/usage_monitor_lab_screen.dart';
 import 'services/ai_service.dart';
+import 'services/auth_service.dart';
 import 'services/esp32_lamp_service.dart';
 import 'services/notification_service.dart';
 import 'theme/app_theme.dart';
@@ -14,6 +20,7 @@ import 'theme/app_theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.init();
+  await AuthService.load(); // 恢复登录态（决定进首页还是登录页）
 
   // 初始化前台服务：App 在后台时时间线继续运行
   FlutterForegroundTask.init(
@@ -37,24 +44,26 @@ void main() async {
     Esp32LampService(host: '10.106.12.6', port: 80),
     AiService(serverUrl: 'http://121.40.96.105:8000'),
   );
+  controller.syncProfileContext(); // 已登录用户：档案注入 AI 上下文
   // 2026-08-29 修复「看看今晚的安排」按钮消失：plan 持久化到本地，
   // App 重启后恢复，首页/聊天页按钮不再丢失。
   await controller.restoreCachedPlan();
-  runApp(SheNicestApp(controller: controller));
+  runApp(WanyuApp(controller: controller));
 }
 
 /// 全局 Navigator Key，用于从后台恢复时跳转到 session 页面
-final GlobalKey<NavigatorState> globalNavigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> globalNavigatorKey =
+    GlobalKey<NavigatorState>();
 
-class SheNicestApp extends StatefulWidget {
-  const SheNicestApp({required this.controller, super.key});
+class WanyuApp extends StatefulWidget {
+  const WanyuApp({required this.controller, super.key});
   final AppController controller;
 
   @override
-  State<SheNicestApp> createState() => _SheNicestAppState();
+  State<WanyuApp> createState() => _WanyuAppState();
 }
 
-class _SheNicestAppState extends State<SheNicestApp> with WidgetsBindingObserver {
+class _WanyuAppState extends State<WanyuApp> with WidgetsBindingObserver {
   bool _isResumed = true;
   bool _askDialogShowing = false;
   bool _stageDialogShowing = false;
@@ -68,7 +77,8 @@ class _SheNicestAppState extends State<SheNicestApp> with WidgetsBindingObserver
     NotificationService.onNotificationTap = (_) {
       _navigateToSession();
       // 即使跳转失败，也用 PostFrameCallback 确保检查 pending
-      WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingDialogs());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _checkPendingDialogs());
     };
 
     // 全局注册时间线回调：不管在哪个页面、前台后台都尝试弹窗
@@ -78,10 +88,12 @@ class _SheNicestAppState extends State<SheNicestApp> with WidgetsBindingObserver
       // 前台：PostFrameCallback 立即执行 → 检查 pending → 显示弹窗
       // 后台：PostFrameCallback 可能延迟到 App 恢复前台时执行 → 检查 pending → 显示弹窗
       // pending 在 consumePendingAskExtend 之前不会被清空
-      WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingDialogs());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _checkPendingDialogs());
     };
     widget.controller.onShowStageInfo = (title, body) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingDialogs());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _checkPendingDialogs());
     };
 
     // 冷启动：App 被系统杀死后从通知重新打开 → 跳转 session 页面
@@ -110,8 +122,22 @@ class _SheNicestAppState extends State<SheNicestApp> with WidgetsBindingObserver
     if (_isResumed) {
       // App 从后台恢复前台：用 PostFrameCallback 确保在 frame 渲染后检查 pending
       // 避免在 context 还没准备好时就检查
-      WidgetsBinding.instance.addPostFrameCallback((_) => _checkPendingDialogs());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _checkPendingDialogs());
     }
+  }
+
+  /// 登录成功：回首页（'/' 会按登录态重建为 HomeScreen），并把档案注入 AI 上下文
+  void _onLoggedIn() {
+    widget.controller.syncProfileContext();
+    globalNavigatorKey.currentState?.pushNamedAndRemoveUntil('/', (r) => false);
+  }
+
+  /// 注册建档成功：进入「直接生成 vs 和 AI 聊聊」选择页
+  void _onRegistered() {
+    widget.controller.syncProfileContext();
+    globalNavigatorKey.currentState
+        ?.pushNamedAndRemoveUntil('/profile-choice', (r) => false);
   }
 
   /// 点击通知（或冷启动从通知打开）→ 跳转 session 页面
@@ -135,13 +161,17 @@ class _SheNicestAppState extends State<SheNicestApp> with WidgetsBindingObserver
     if (context == null) return;
 
     // 优先显示延时询问弹窗
-    if (widget.controller.hasPendingAskExtend && !_askDialogShowing && !_stageDialogShowing) {
+    if (widget.controller.hasPendingAskExtend &&
+        !_askDialogShowing &&
+        !_stageDialogShowing) {
       widget.controller.consumePendingAskExtend(); // 现在才消费
       _showExtendDialogGlobally();
       return;
     }
     // 再显示阶段信息弹窗
-    if (widget.controller.hasPendingStageInfo && !_stageDialogShowing && !_askDialogShowing) {
+    if (widget.controller.hasPendingStageInfo &&
+        !_stageDialogShowing &&
+        !_askDialogShowing) {
       final pending = widget.controller.consumePendingStageInfo();
       if (pending != null) {
         _showStageInfoDialogGlobally(pending.title, pending.body);
@@ -162,16 +192,16 @@ class _SheNicestAppState extends State<SheNicestApp> with WidgetsBindingObserver
     String mainText;
     String lightHint;
     if (extendCount == 0) {
-      mainText = '到了收尾时刻，需要延时么？';
-      lightHint = '当前亮度 50%，选"延时"保持 50%，选"收尾"调至 5%';
+      mainText = '到了入睡提醒时间，需要延时么？';
+      lightHint = '当前亮度 50%，选"延时"保持 50%，选"准备入睡"调至 5%';
     } else if (extendCount == 1) {
       mainText = '还需要延时么？';
-      lightHint = '当前亮度 5%，选"延时"恢复 50%，选"收尾"保持 5%';
+      lightHint = '当前亮度 5%，选"延时"恢复 50%，选"准备入睡"保持 5%';
     } else if (extendCount == 2) {
       mainText = '你已经用手机时间很长了，快休息吧';
-      lightHint = '当前亮度 5%，选"延时"恢复 50%，选"收尾"保持 5%';
+      lightHint = '当前亮度 5%，选"延时"恢复 50%，选"准备入睡"保持 5%';
     } else {
-      mainText = '到了收尾时刻，需要延时么？';
+      mainText = '到了入睡提醒时间，需要延时么？';
       lightHint = '';
     }
     final choice = await showDialog<String>(
@@ -184,7 +214,8 @@ class _SheNicestAppState extends State<SheNicestApp> with WidgetsBindingObserver
           children: [
             Icon(Icons.nights_stay_rounded, color: Color(0xFFFFC107), size: 26),
             SizedBox(width: 10),
-            Text('到了收尾时刻', style: TextStyle(fontSize: 20, color: Colors.white)),
+            Text('到了入睡提醒时间',
+                style: TextStyle(fontSize: 20, color: Colors.white)),
           ],
         ),
         content: Text(
@@ -195,10 +226,12 @@ class _SheNicestAppState extends State<SheNicestApp> with WidgetsBindingObserver
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, 'no'),
-            child: const Text('不用了，收尾', style: TextStyle(color: Colors.white54)),
+            child:
+                const Text('不用了，准备入睡', style: TextStyle(color: Colors.white54)),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFFC107)),
+            style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFFFC107)),
             onPressed: () => Navigator.pop(context, 'yes'),
             child: Text('再延时 $extMin 分钟'),
           ),
@@ -228,19 +261,23 @@ class _SheNicestAppState extends State<SheNicestApp> with WidgetsBindingObserver
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         title: Row(
           children: [
-            const Icon(Icons.nights_stay_rounded, color: Color(0xFFFFC107), size: 26),
+            const Icon(Icons.nights_stay_rounded,
+                color: Color(0xFFFFC107), size: 26),
             const SizedBox(width: 10),
-            Text(title, style: const TextStyle(fontSize: 20, color: Colors.white)),
+            Text(title,
+                style: const TextStyle(fontSize: 20, color: Colors.white)),
           ],
         ),
         content: Text(
           body,
-          style: const TextStyle(color: Colors.white70, height: 1.6, fontSize: 16),
+          style:
+              const TextStyle(color: Colors.white70, height: 1.6, fontSize: 16),
         ),
         actionsAlignment: MainAxisAlignment.center,
         actions: [
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFFFC107)),
+            style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFFFC107)),
             onPressed: () => Navigator.pop(context),
             child: const Text('知道了'),
           ),
@@ -261,7 +298,16 @@ class _SheNicestAppState extends State<SheNicestApp> with WidgetsBindingObserver
       theme: buildAppTheme(),
       initialRoute: '/',
       routes: {
-        '/': (_) => HomeScreen(controller: widget.controller),
+        // 登录态决定首页：未登录 → 登录页；已登录 → 主页
+        '/': (_) => AuthService.isLoggedIn
+            ? HomeScreen(controller: widget.controller)
+            : LoginScreen(onLoggedIn: _onLoggedIn),
+        '/login': (_) => LoginScreen(onLoggedIn: _onLoggedIn),
+        '/register': (_) => RegisterScreen(onRegistered: _onRegistered),
+        '/profile-choice': (_) =>
+            ProfileChoiceScreen(controller: widget.controller),
+        '/settings': (_) => SettingsScreen(controller: widget.controller),
+        '/usage-monitor-lab': (_) => const UsageMonitorLabScreen(),
         '/chat': (_) => ChatScreen(controller: widget.controller),
         '/plan': (_) => PlanScreen(controller: widget.controller),
         '/session': (_) => SessionScreen(controller: widget.controller),

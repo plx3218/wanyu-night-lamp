@@ -10,7 +10,7 @@ class PlanScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: Colors.transparent, title: const Text('今晚的安排')),
+      appBar: AppBar(backgroundColor: Colors.transparent, title: const Text('确认今晚计划')),
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -287,7 +287,7 @@ class _PlanReadyView extends StatelessWidget {
               );
             }
           },
-          child: const Text('就按这个来'),
+          child: const Text('开始今晚计划'),
         ),
         TextButton(
           onPressed: () {

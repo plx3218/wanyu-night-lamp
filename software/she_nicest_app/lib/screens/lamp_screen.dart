@@ -120,7 +120,47 @@ class _LampScreenState extends State<LampScreen> {
                 enabled: widget.controller.canManualControl,
                 onSelect: (level) => widget.controller.manualSetBrightness(level),
               ),
-              if (!widget.controller.canManualControl) ...[
+              const SizedBox(height: 20),
+              // 亮度滑块
+              if (widget.controller.canManualControl) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.brightness_low_rounded, size: 20, color: AppColors.textTertiary),
+                    Expanded(
+                      child: Slider(
+                        value: state.brightness.toDouble().clamp(0, 100),
+                        min: 0,
+                        max: 100,
+                        divisions: 20,
+                        activeColor: AppColors.moon,
+                        inactiveColor: AppColors.moon.withValues(alpha: 0.2),
+                        label: '${state.brightness}%',
+                        onChanged: (v) => widget.controller.manualSetBrightness(v.round()),
+                      ),
+                    ),
+                    const Icon(Icons.brightness_high_rounded, size: 20, color: AppColors.textTertiary),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // 让灯暗一些：快捷降低一档
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      final dims = [0, 5, 20, 40, 50, 70, 100];
+                      final cur = state.brightness;
+                      int target = 0;
+                      for (final d in dims) {
+                        if (d < cur - 2) target = d;
+                      }
+                      widget.controller.manualSetBrightness(target);
+                    },
+                    icon: const Icon(Icons.brightness_3_rounded, size: 18),
+                    label: const Text('让灯暗一些'),
+                    style: TextButton.styleFrom(foregroundColor: AppColors.moon),
+                  ),
+                ),
+              ] else ...[
                 const SizedBox(height: 8),
                 Text('睡前流程进行中，暂不可调',
                     style: TextStyle(fontSize: 13, color: AppColors.textTertiary)),
