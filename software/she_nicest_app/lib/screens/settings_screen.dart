@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../app_controller.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../models/night_usage_record.dart';
 import '../theme/app_theme.dart';
 
 /// 个人设置：查看/编辑睡眠档案 + 管理员状态 + 退出登录
@@ -349,6 +350,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               context, '/usage-monitor-lab'),
                         ),
                       ),
+                      _settingCard(
+                        Icons.fact_check_outlined,
+                        '测试阶段',
+                        Row(
+                          children: [
+                            Expanded(child: _phaseButton('基线：只记录', NightExperimentPhase.baseline)),
+                            const SizedBox(width: 10),
+                            Expanded(child: _phaseButton('干预：会提醒', NightExperimentPhase.intervention)),
+                          ],
+                        ),
+                      ),
                       if (_message != null) ...[
                         const SizedBox(height: 8),
                         Row(
@@ -415,6 +427,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _phaseButton(String label, NightExperimentPhase phase) {
+    final selected = widget.controller.experimentPhase == phase;
+    return OutlinedButton(
+      onPressed: () {
+        widget.controller.setExperimentPhase(phase);
+        setState(() {});
+      },
+      style: OutlinedButton.styleFrom(
+        backgroundColor: selected ? AppColors.lake.withValues(alpha: 0.18) : null,
+        side: BorderSide(color: selected ? AppColors.lake : Colors.white24),
+        foregroundColor: selected ? AppColors.lake : AppColors.textSecondary,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+      ),
+      child: Text(label, textAlign: TextAlign.center),
     );
   }
 

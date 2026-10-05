@@ -52,6 +52,7 @@ void main() async {
   // 2026-08-29 修复「看看今晚的安排」按钮消失：plan 持久化到本地，
   // App 重启后恢复，首页/聊天页按钮不再丢失。
   await controller.restoreCachedPlan();
+  await controller.loadExperimentPhase();
   await controller.syncUsageMonitoring();
   runApp(WanyuApp(controller: controller));
 }

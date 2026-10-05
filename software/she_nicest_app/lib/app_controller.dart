@@ -168,13 +168,35 @@ class AppController extends ChangeNotifier {
   bool _awaitingReminderAction = false;
   TonightPlan? _pendingTonightPlan;
   bool _disposed = false;
-  NightExperimentPhase experimentPhase = NightExperimentPhase.intervention;
+  NightExperimentPhase experimentPhase = NightExperimentPhase.baseline;
 
   bool get remindersEnabled => experimentPhase == NightExperimentPhase.intervention;
 
   void setExperimentPhase(NightExperimentPhase phase) {
     experimentPhase = phase;
+    unawaited(_persistExperimentPhase(phase));
     if (!_disposed) notifyListeners();
+  }
+
+  static const String _kExperimentPhaseKey = 'wanyu_experiment_phase';
+
+  Future<void> loadExperimentPhase() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kExperimentPhaseKey);
+      experimentPhase = raw == NightExperimentPhase.intervention.name
+          ? NightExperimentPhase.intervention
+          : NightExperimentPhase.baseline;
+    } catch (_) {
+      experimentPhase = NightExperimentPhase.baseline;
+    }
+  }
+
+  Future<void> _persistExperimentPhase(NightExperimentPhase phase) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kExperimentPhaseKey, phase.name);
+    } catch (_) {}
   }
 
   void _handleForegroundTaskData(Object data) {
