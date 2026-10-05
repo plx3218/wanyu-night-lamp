@@ -17,7 +17,6 @@ import 'services/android_usage_service.dart';
 import 'services/background_handler.dart';
 import 'services/monitor_schedule_service.dart';
 import 'services/usage_monitor_coordinator.dart';
-import 'utils/ai_response_parser.dart';
 
 /// AppController.confirmPlan 在没有 AI 生成 plan 时抛出；
 /// UI 层捕获后应该引导用户回到聊天页和 AI 先聊一轮再回来。
@@ -152,6 +151,7 @@ class AppController extends ChangeNotifier {
   MonitorSchedule? get monitorSchedule => usageMonitor.currentSchedule;
   UsageMonitorEvent? lastUsageMonitorEvent;
   bool _awaitingReminderAction = false;
+  TonightPlan? _pendingTonightPlan;
 
   void _handleForegroundTaskData(Object data) {
     if (data is Map && data['type'] == 'usage_monitor_tick') {
@@ -181,11 +181,31 @@ class AppController extends ChangeNotifier {
   }
 
   void setTonightPlan(TonightPlan plan) {
+    final datedPlan = plan.generatedAt == null
+        ? plan.copyWith(generatedAt: DateTime.now())
+        : plan;
+    final now = DateTime.now();
+    final currentSchedule = usageMonitor.currentSchedule;
+    final monitoringWindowLocked = usageMonitor.isRunning &&
+        currentSchedule != null &&
+        !now.isBefore(currentSchedule.startAt);
+    if (monitoringWindowLocked && _nightSession.plan != null) {
+      _pendingTonightPlan = datedPlan;
+      unawaited(_persistPendingPlan(datedPlan));
+      notifyListeners();
+      return;
+    }
+    _applyTonightPlan(datedPlan);
+  }
+
+  void _applyTonightPlan(TonightPlan plan) {
+    _pendingTonightPlan = null;
+    unawaited(_removePendingPlan());
     // 挂接 plan → 立即把状态机推到 PLANNED（不再是 unplanned）
     _nightSession = NightSession(
       state: NightSessionState.planned,
       enteredAt: DateTime.now(),
-      thresholdMin: plan.continuousThresholdMin ?? 10,
+      thresholdMin: plan.continuousThresholdMin ?? 20,
       extensionMinutesLeft: 0,
       nudgeCount: 0,
       extendCount: 0,
@@ -206,6 +226,7 @@ class AppController extends ChangeNotifier {
 
   // ============ plan 本地持久化（修复「看看今晚的安排」按钮重启后消失）============
   static const String _kPlanCacheKey = 'wanyu_tonight_plan_cache';
+  static const String _kPendingPlanCacheKey = 'wanyu_pending_plan_cache';
 
   Future<void> _persistPlan(TonightPlan? plan) async {
     try {
@@ -221,11 +242,46 @@ class AppController extends ChangeNotifier {
   }
 
   /// App 启动时调用：从本地缓存恢复上一次的 TonightPlan（不恢复会话进度）
+  Future<void> _persistPendingPlan(TonightPlan plan) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kPendingPlanCacheKey, jsonEncode(plan.toJson()));
+    } catch (_) {
+      // Pending plan persistence is best effort and never blocks monitoring.
+    }
+  }
+
+  Future<void> _removePendingPlan() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kPendingPlanCacheKey);
+    } catch (_) {}
+  }
+
   Future<void> restoreCachedPlan() async {
     if (_nightSession.plan != null) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_kPlanCacheKey);
+      var raw = prefs.getString(_kPlanCacheKey);
+      final pendingRaw = prefs.getString(_kPendingPlanCacheKey);
+      var selectedPending = false;
+      if (pendingRaw != null && pendingRaw.trim().isNotEmpty) {
+        try {
+          final pendingMap = jsonDecode(pendingRaw);
+          if (pendingMap is Map<String, dynamic>) {
+            final pending = TonightPlan.fromServerJson(pendingMap);
+            final today = DateTime.now();
+            final generated = pending.generatedAt;
+            if (generated != null &&
+                generated.year == today.year &&
+                generated.month == today.month &&
+                generated.day == today.day) {
+              raw = pendingRaw;
+              selectedPending = true;
+            }
+          }
+        } catch (_) {}
+      }
       if (raw == null || raw.trim().isEmpty) return;
       final map = jsonDecode(raw);
       if (map is Map<String, dynamic>) {
@@ -233,7 +289,7 @@ class AppController extends ChangeNotifier {
         _nightSession = NightSession(
           state: NightSessionState.planned,
           enteredAt: DateTime.now(),
-          thresholdMin: plan.continuousThresholdMin ?? 10,
+          thresholdMin: plan.continuousThresholdMin ?? 20,
           extensionMinutesLeft: 0,
           nudgeCount: 0,
           extendCount: 0,
@@ -241,6 +297,9 @@ class AppController extends ChangeNotifier {
           enteredBecause: '从本地缓存恢复了 plan',
           plan: plan,
         );
+        if (selectedPending) {
+          unawaited(_removePendingPlan());
+        }
         notifyListeners();
         unawaited(syncUsageMonitoring());
       }
@@ -1182,8 +1241,24 @@ class AppController extends ChangeNotifier {
   /// The coordinator stays idle until the two-hour monitoring window begins.
   Future<void> syncUsageMonitoring({DateTime? now}) async {
     final profile = AuthService.user;
-    if (profile == null || usageMonitor.isRunning) return;
     final current = now ?? DateTime.now();
+    if (profile == null) return;
+    if (usageMonitor.isRunning) {
+      final locked = usageMonitor.currentSchedule;
+      if (locked == null || current.isBefore(locked.targetBedtime)) {
+        final active = locked != null && !current.isBefore(locked.startAt);
+        if (active) return;
+        await usageMonitor.stop();
+      } else {
+        await usageMonitor.stop();
+        if (_pendingTonightPlan != null) {
+          final pending = _pendingTonightPlan!;
+          _pendingTonightPlan = null;
+          _applyTonightPlan(pending);
+          return;
+        }
+      }
+    }
     final schedule = MonitorScheduleService.resolveFor(
       DateTime(current.year, current.month, current.day),
       tonightPlan,
@@ -1200,17 +1275,14 @@ class AppController extends ChangeNotifier {
           '请根据我的睡眠档案直接生成今晚的计划：我通常 ${u.bedtime} 入睡，${u.wakeTime} 起床，'
           '睡前常刷${u.apps.isEmpty ? '手机' : u.apps}，喜欢的替代活动是${u.replacementActivity}。'
           '今晚就按我的习惯来，直接给计划，不要问我问题。';
-      String full = '';
-      await for (final chunk in ai.chat(prompt)) {
-        full += chunk;
-      }
-      final payload = extractPlanPayload(full);
-      final plan = payload?['plan'];
-      if (payload != null && payload['status'] == 'ready' && plan is Map<String, dynamic>) {
-        setTonightPlan(TonightPlan.fromServerJson(payload));
-        return true;
-      }
-      return false;
+      final plan = await ai.generatePlan(
+        prompt: prompt,
+        bedtime: u.bedtime,
+        wakeTime: u.wakeTime,
+        replacementActivity: u.replacementActivity,
+      );
+      setTonightPlan(plan);
+      return true;
     } catch (e) {
       debugPrint('[AppController] 档案生成计划失败: $e');
       return false;

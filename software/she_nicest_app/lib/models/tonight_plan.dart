@@ -73,6 +73,10 @@ class TonightPlan {
   /// AI 对这个 plan 的自然回复语，Chat 消息也用它。和 plan 一起保存，
   /// PlanScreen 顶部卡片可复用它做副标题
   final String reply;
+  /// Local generation metadata used for selecting the plan for tonight.
+  final DateTime? generatedAt;
+  /// `ai` for a server result, `fallback` for a local result.
+  final String source;
 
   const TonightPlan({
     required this.wakeTime,
@@ -88,6 +92,8 @@ class TonightPlan {
     this.continuousThresholdMin,
     this.lightLevelWindDown,
     this.lightLevelBedtime,
+    this.generatedAt,
+    this.source = 'ai',
   });
 
   factory TonightPlan.fromServerJson(Map<String, dynamic> serverJson) {
@@ -141,7 +147,7 @@ class TonightPlan {
       continuousThresholdMin: () {
         final v = plan['continuous_threshold_min'] ?? serverJson['continuous_threshold_min'];
         if (v == null) return null;
-        return clampInt(v, 1, 240, 10);
+        return clampInt(v, 1, 240, 20);
       }(),
       lightLevelWindDown: () {
         final v = plan['light_level_wind_down'] ?? serverJson['light_level_wind_down'];
@@ -152,6 +158,14 @@ class TonightPlan {
         final v = plan['light_level_bedtime'] ?? serverJson['light_level_bedtime'];
         if (v == null) return null;
         return clampInt(v, 0, 100, 10);
+      }(),
+      generatedAt: () {
+        final value = serverJson['generated_at'];
+        return value is String ? DateTime.tryParse(value) : null;
+      }(),
+      source: () {
+        final value = serverJson['source'];
+        return value is String && value.trim().isNotEmpty ? value.trim() : 'ai';
       }(),
     );
   }
@@ -183,6 +197,8 @@ class TonightPlan {
         },
         'assumptions': assumptions,
         if (urgentFinish) 'urgent_finish': true,
+        if (generatedAt != null) 'generated_at': generatedAt!.toIso8601String(),
+        'source': source,
       };
 
   TonightPlan copyWith({
@@ -199,6 +215,8 @@ class TonightPlan {
     int? continuousThresholdMin,
     int? lightLevelWindDown,
     int? lightLevelBedtime,
+    DateTime? generatedAt,
+    String? source,
   }) =>
       TonightPlan(
         wakeTime: wakeTime ?? this.wakeTime,
@@ -214,6 +232,8 @@ class TonightPlan {
         continuousThresholdMin: continuousThresholdMin ?? this.continuousThresholdMin,
         lightLevelWindDown: lightLevelWindDown ?? this.lightLevelWindDown,
         lightLevelBedtime: lightLevelBedtime ?? this.lightLevelBedtime,
+        generatedAt: generatedAt ?? this.generatedAt,
+        source: source ?? this.source,
       );
 
   /// 对 steps 做规范化：如果 AI 返回 < 3 步且有头尾时间，本地自动补齐「现在（开始行动）/ windDown 留意 / reminder 结束」三段

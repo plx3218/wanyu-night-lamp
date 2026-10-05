@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../models/tonight_plan.dart';
+import 'fallback_plan_service.dart';
+import '../utils/ai_response_parser.dart';
 
 class AiService {
   AiService({this.serverUrl = 'http://121.40.96.105:8000'});
@@ -48,6 +51,67 @@ class AiService {
     }
 
     _history.add({'role': 'assistant', 'content': buffer.toString()});
+  }
+
+  /// Returns a validated plan or the same-shape local plan for every AI failure.
+  /// The fallback is deliberately generated on-device, so monitoring can start
+  /// even when the server, network, JSON, or model output is unavailable.
+  Future<TonightPlan> generatePlan({
+    required String prompt,
+    required String bedtime,
+    required String wakeTime,
+    Object? scenario,
+    String? replacementActivity,
+    DateTime? now,
+  }) async {
+    final generatedAt = now ?? DateTime.now();
+    try {
+      var full = '';
+      await for (final chunk in chat(prompt).timeout(const Duration(seconds: 12))) {
+        full += chunk;
+      }
+      final payload = extractPlanPayload(full);
+      if (_isValidReadyPayload(payload)) {
+        return TonightPlan.fromServerJson(payload!).copyWith(
+          generatedAt: generatedAt,
+          source: 'ai',
+        );
+      }
+    } catch (_) {
+      // Network, timeout, stream, and decoding failures all use the same fallback.
+    }
+
+    return FallbackPlanService.create(
+      now: generatedAt,
+      bedtime: bedtime,
+      wakeTime: wakeTime,
+      scenario: scenario ?? BedtimeScenario.normalWorkday,
+      replacementActivity: replacementActivity,
+    );
+  }
+
+  static bool _isValidReadyPayload(Map<String, dynamic>? payload) {
+    if (payload == null || payload['status'] != 'ready') return false;
+    final plan = payload['plan'];
+    if (plan is! Map<String, dynamic>) return false;
+    final timePattern = RegExp(r'^\d{1,2}[:：]\d{2}$');
+    for (final key in <String>[
+      'wake_time',
+      'recommended_bedtime',
+      'wind_down_time',
+      'reminder_time',
+    ]) {
+      if (plan[key] is! String || !timePattern.hasMatch(plan[key] as String)) {
+        return false;
+      }
+    }
+    final steps = plan['steps'];
+    if (steps is! List || steps.isEmpty || steps.length > 3) return false;
+    if (plan['replacement_activity'] is! String ||
+        (plan['replacement_activity'] as String).trim().isEmpty) {
+      return false;
+    }
+    return plan['extension_minutes'] is num;
   }
 
   void clearHistory() {

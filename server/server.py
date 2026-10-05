@@ -114,7 +114,8 @@ FALLBACK_PLAN = {
             {"time": (datetime.now() + timedelta(hours=1)).strftime("%H:%M"), "action": "准备结束今天"}
         ],
         "replacement_activity": "音乐",
-        "extension_minutes": 10
+        "extension_minutes": 10,
+        "continuous_threshold_min": 20
     },
     "assumptions": ["默认起床时间 07:30", "默认延长 10 分钟"]
 }
@@ -533,6 +534,7 @@ def validate_and_fix_times(data: dict) -> dict:
         "steps": [{"time": s["time"], "action": s["action"]} for s in steps],
         "replacement_activity": plan.get("replacement_activity") if isinstance(plan.get("replacement_activity"), str) and plan.get("replacement_activity") else "音乐",
         "extension_minutes": int(plan.get("extension_minutes")) if isinstance(plan.get("extension_minutes"), int) and plan.get("extension_minutes") > 0 else 10,
+        "continuous_threshold_min": int(plan.get("continuous_threshold_min")) if isinstance(plan.get("continuous_threshold_min"), int) and plan.get("continuous_threshold_min") > 0 else 20,
     }
 
     # **优先保留 DeepSeek 的 reply 文案**，绝不使用 FALLBACK_PLAN 的默认 reply
