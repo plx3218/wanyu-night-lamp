@@ -1,6 +1,6 @@
 import os, json, re
 from datetime import datetime, timedelta
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import httpx
@@ -10,6 +10,24 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
+
+DAILY_SUMMARIES = []
+DAILY_SUMMARY_KEYS = {
+    "day",
+    "monitor_start_at",
+    "target_bedtime",
+    "entertainment_minutes",
+    "reminder_count",
+    "continue_count",
+    "replacement_count",
+    "prepare_for_sleep_at",
+    "phone_idle_proxy_at",
+    "usage_access_granted",
+    "monitor_status",
+    "data_source",
+    "phase",
+    "reminders_enabled",
+}
 
 SYSTEM_PROMPT = """你是 SheNicest 的睡前时间规划助手。
 
@@ -692,6 +710,24 @@ async def chat(request: Request):
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@app.post("/api/v1/usage/summary")
+async def save_usage_summary(request: Request):
+    """Accept consented daily aggregates only; never accept raw usage events."""
+    body = await request.json()
+    if body.get("consent") is not True:
+        raise HTTPException(status_code=403, detail="daily summary consent required")
+    summary = body.get("summary")
+    if not isinstance(summary, dict):
+        raise HTTPException(status_code=400, detail="summary must be an object")
+    unknown = set(summary) - DAILY_SUMMARY_KEYS
+    if unknown:
+        raise HTTPException(status_code=400, detail="raw usage fields are not accepted")
+    DAILY_SUMMARIES.append(dict(summary))
+    if len(DAILY_SUMMARIES) > 1000:
+        del DAILY_SUMMARIES[:-1000]
+    return {"ok": True, "stored": True, "scope": "daily_aggregate"}
 
 
 @app.get("/health")

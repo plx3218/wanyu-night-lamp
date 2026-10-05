@@ -119,4 +119,24 @@ class ApiService {
     final data = jsonDecode(resp.body);
     return UserProfile.fromJson((data['user'] as Map<String, dynamic>?) ?? const {});
   }
+
+  /// Uploads only an already-aggregated daily summary after explicit consent.
+  /// The client never sends raw package names, event segments, or browsing data.
+  static Future<void> uploadDailySummary(
+    String token,
+    Map<String, dynamic> summary, {
+    required bool consent,
+  }) async {
+    if (!consent) {
+      throw ApiException('未取得数据汇总同意，本次只保存在本机。');
+    }
+    final resp = await http
+        .post(
+          Uri.parse('$baseUrl/api/v1/usage/summary'),
+          headers: _authHeaders(token),
+          body: jsonEncode({'consent': true, 'summary': summary}),
+        )
+        .timeout(const Duration(seconds: 15));
+    _throwIfError(resp);
+  }
 }

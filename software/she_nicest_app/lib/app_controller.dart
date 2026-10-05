@@ -14,9 +14,12 @@ import 'services/auth_service.dart';
 import 'services/esp32_lamp_service.dart';
 import 'services/notification_service.dart';
 import 'services/android_usage_service.dart';
+import 'services/continuous_usage_engine.dart';
 import 'services/background_handler.dart';
 import 'services/monitor_schedule_service.dart';
 import 'services/usage_monitor_coordinator.dart';
+import 'services/night_record_service.dart';
+import 'models/night_usage_record.dart';
 
 /// AppController.confirmPlan 在没有 AI 生成 plan 时抛出；
 /// UI 层捕获后应该引导用户回到聊天页和 AI 先聊一轮再回来。
@@ -36,11 +39,17 @@ class IllegalTransitionException implements Exception {
 }
 
 class AppController extends ChangeNotifier {
-  AppController(this.lamp, this.ai, {UsageMonitorCoordinator? usageMonitor})
+  AppController(
+    this.lamp,
+    this.ai, {
+    UsageMonitorCoordinator? usageMonitor,
+    NightRecordService? nightRecordService,
+  })
       : usageMonitor = usageMonitor ??
             UsageMonitorCoordinator(
               source: AndroidUsageDataSource(AndroidUsageClient()),
-            ) {
+            ),
+        nightRecordService = nightRecordService ?? NightRecordService() {
     _lampSubscription = lamp.events.listen((event) {
       lastLampEvent = event;
       if (event.state != null) {
@@ -68,6 +77,9 @@ class AppController extends ChangeNotifier {
     FlutterForegroundTask.addTaskDataCallback(_handleForegroundTaskData);
     _usageMonitorSubscription = this.usageMonitor.events.listen((event) {
       lastUsageMonitorEvent = event;
+      if (event.snapshot != null) {
+        _lastUsageSnapshot = event.snapshot;
+      }
       notifyListeners();
       if (event.type == UsageMonitorEventType.snapshot &&
           event.snapshot?.thresholdReached == true) {
@@ -79,6 +91,7 @@ class AppController extends ChangeNotifier {
   final LampService lamp;
   final AiService ai;
   final UsageMonitorCoordinator usageMonitor;
+  final NightRecordService nightRecordService;
   late final StreamSubscription<LampEvent> _lampSubscription;
   late final StreamSubscription<UsageMonitorEvent> _usageMonitorSubscription;
   LampEvent? lastLampEvent;
@@ -150,8 +163,18 @@ class AppController extends ChangeNotifier {
   bool get hasTonightPlan => tonightPlan != null;
   MonitorSchedule? get monitorSchedule => usageMonitor.currentSchedule;
   UsageMonitorEvent? lastUsageMonitorEvent;
+  UsageSnapshot? _lastUsageSnapshot;
+  String? lastNightRecordError;
   bool _awaitingReminderAction = false;
   TonightPlan? _pendingTonightPlan;
+  NightExperimentPhase experimentPhase = NightExperimentPhase.intervention;
+
+  bool get remindersEnabled => experimentPhase == NightExperimentPhase.intervention;
+
+  void setExperimentPhase(NightExperimentPhase phase) {
+    experimentPhase = phase;
+    notifyListeners();
+  }
 
   void _handleForegroundTaskData(Object data) {
     if (data is Map && data['type'] == 'usage_monitor_tick') {
@@ -160,6 +183,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _handleUsageThreshold(UsageMonitorEvent event) async {
+    if (experimentPhase == NightExperimentPhase.baseline) return;
     if (_awaitingReminderAction) return;
     _awaitingReminderAction = true;
     if (_nightSession.state == NightSessionState.planned) {
@@ -841,6 +865,40 @@ class AppController extends ChangeNotifier {
   }
 
   /// 时间线结束：平滑渐变到 5% 夜灯
+  /// Persists the privacy-safe nightly aggregate. `phoneIdleAt` is a proxy,
+  /// never a claim that the user actually fell asleep at that time.
+  Future<void> saveTonightRecord({DateTime? now}) async {
+    final current = now ?? DateTime.now();
+    final schedule = monitorSchedule;
+    final target = schedule?.targetBedtime;
+    final snapshot = _lastUsageSnapshot;
+    final event = lastUsageMonitorEvent;
+    final recordDay = target ?? current;
+    final record = NightUsageRecord(
+      day: DateTime(recordDay.year, recordDay.month, recordDay.day),
+      monitorStartAt: schedule?.startAt,
+      targetBedtime: target,
+      entertainmentMinutes: snapshot?.entertainmentMinutes ?? 0,
+      reminderCount: _nightSession.nudgeCount,
+      continueCount: _nightSession.extendCount,
+      replacementSelections: _nightSession.replacementSelections,
+      prepareForSleepAt: _nightSession.preparedForSleep ? current : null,
+      phoneIdleAt: snapshot?.lastPhoneActivityAt,
+      usageAccessGranted: event?.type != UsageMonitorEventType.permissionRequired,
+      monitorStatus: event?.type.name ?? 'not_started',
+      dataSource: snapshot == null ? 'local_no_snapshot' : 'android_usage_stats',
+      phase: experimentPhase,
+      remindersEnabled: remindersEnabled,
+    );
+    try {
+      await nightRecordService.saveLocal(record);
+      lastNightRecordError = null;
+    } on NightRecordException catch (error) {
+      lastNightRecordError = error.message;
+    }
+    notifyListeners();
+  }
+
   void timelineFinish() {
     _timelineRunning = false;
     _timelineTimer?.cancel();
@@ -856,6 +914,7 @@ class AppController extends ChangeNotifier {
       because: '进入入睡陪伴，5% 夜灯陪你入睡',
       brightness: bedBright,
     );
+    unawaited(saveTonightRecord());
     _fireCommand(LampCommandId.finish, brightness: bedBright);
   }
 
@@ -1007,6 +1066,7 @@ class AppController extends ChangeNotifier {
     if (result.allowed) {
       _awaitingReminderAction = false;
       _nightSession = _nightSession.recordAction('prepareForSleep');
+      unawaited(saveTonightRecord());
       notifyListeners();
     }
     return result;

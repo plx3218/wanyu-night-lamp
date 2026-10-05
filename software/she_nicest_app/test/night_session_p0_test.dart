@@ -5,16 +5,18 @@ void main() {
   test('records P0 action events in the nightly record row', () {
     final session = NightSession.initial()
         .recordAction('continueForTenMinutes')
-        .recordAction('chooseReplacement:阅读')
+        .recordAction('chooseReplacement:reading')
         .recordAction('prepareForSleep');
 
     expect(session.actionLog, <String>[
       'continueForTenMinutes',
-      'chooseReplacement:阅读',
+      'chooseReplacement:reading',
       'prepareForSleep',
     ]);
     expect(session.toRecordRow(finishedAt: DateTime(2026, 10, 6))['action_log'],
         session.actionLog);
+    expect(session.replacementSelections, <String>['reading']);
+    expect(session.preparedForSleep, isTrue);
   });
 
   test('keeps a copied session action log immutable', () {

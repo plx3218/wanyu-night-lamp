@@ -163,6 +163,14 @@ class NightSession {
         actionLog: <String>[...actionLog, action],
       );
 
+  List<String> get replacementSelections => <String>[
+        for (final action in actionLog)
+          if (action.startsWith('chooseReplacement:'))
+            action.substring('chooseReplacement:'.length),
+      ];
+
+  bool get preparedForSleep => actionLog.contains('prepareForSleep');
+
   // ================ 便捷派生字段（UI 直接调用）===============
 
   /// 友好的当前状态中文名
@@ -205,5 +213,7 @@ class NightSession {
     'final_state': state.name,
     'plan_json': plan?.toJson(),
     'action_log': actionLog,
+    'replacement_selections': replacementSelections,
+    'prepared_for_sleep': preparedForSleep,
   };
 }
