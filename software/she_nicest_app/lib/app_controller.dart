@@ -70,6 +70,10 @@ class AppController extends ChangeNotifier {
     _usageMonitorSubscription = this.usageMonitor.events.listen((event) {
       lastUsageMonitorEvent = event;
       notifyListeners();
+      if (event.type == UsageMonitorEventType.snapshot &&
+          event.snapshot?.thresholdReached == true) {
+        unawaited(_handleUsageThreshold(event));
+      }
     });
   }
 
@@ -147,11 +151,33 @@ class AppController extends ChangeNotifier {
   bool get hasTonightPlan => tonightPlan != null;
   MonitorSchedule? get monitorSchedule => usageMonitor.currentSchedule;
   UsageMonitorEvent? lastUsageMonitorEvent;
+  bool _awaitingReminderAction = false;
 
   void _handleForegroundTaskData(Object data) {
     if (data is Map && data['type'] == 'usage_monitor_tick') {
       unawaited(usageMonitor.refresh());
     }
+  }
+
+  Future<void> _handleUsageThreshold(UsageMonitorEvent event) async {
+    if (_awaitingReminderAction) return;
+    _awaitingReminderAction = true;
+    if (_nightSession.state == NightSessionState.planned) {
+      _nightSession = _nightSession.copyWith(
+        state: NightSessionState.observing,
+        observedSince: event.schedule?.startAt ?? event.occurredAt,
+      );
+    }
+    final result = await triggerNudge();
+    if (!result.allowed) {
+      _awaitingReminderAction = false;
+      return;
+    }
+    await NotificationService.showStage(
+      id: 201,
+      title: '晚屿',
+      body: '你已经连续使用手机 20 分钟了，准备换个节奏吗？',
+    );
   }
 
   void setTonightPlan(TonightPlan plan) {
@@ -333,6 +359,7 @@ class AppController extends ChangeNotifier {
       lastLampMessage: outcome?.displayMessage ?? prev.lastLampMessage,
       enteredBecause: because,
       plan: plan,
+      actionLog: <String>[...prev.actionLog, because],
     );
     notifyListeners();
 
@@ -868,6 +895,79 @@ class AppController extends ChangeNotifier {
   /// 延时结束后：
   ///   第 1/2 次 → 亮度降至 5%，重新弹询问弹窗
   ///   第 3 次 → 直接 5% 夜灯（不再询问）
+  Future<StateTransitionResult> continueUsage() async {
+    if (_nightSession.extendCount >= 2) {
+      const reason = 'continueForTenMinutes blocked after two extensions';
+      _nightSession = _nightSession.recordAction(reason);
+      notifyListeners();
+      await NotificationService.showStage(
+        id: 204,
+        title: '晚屿',
+        body: '今晚已经延后两次了，准备入睡会更合适。',
+      );
+      return StateTransitionResult(
+        from: _nightSession.state,
+        to: _nightSession.state,
+        allowed: false,
+        reason: reason,
+      );
+    }
+    final result = await extendSession(minutes: 10);
+    if (result.allowed) {
+      _awaitingReminderAction = false;
+      _nightSession = _nightSession.recordAction('continueForTenMinutes');
+      notifyListeners();
+    }
+    return result;
+  }
+
+  Future<StateTransitionResult> selectReplacement(String activity) async {
+    final replacement = activity.trim().isEmpty
+        ? (tonightPlan?.replacementActivity ?? '直接休息')
+        : activity.trim();
+    final brightness = tonightPlan?.lightLevelWindDown == null
+        ? 60
+        : (tonightPlan!.lightLevelWindDown! + 10).clamp(0, 100);
+    final result = await _transitionTo(
+      NightSessionState.replacing,
+      because: 'chooseReplacement:$replacement',
+      sendCommand: LampCommandId.enterReplace,
+      brightness: brightness,
+      durationMinutes: 30,
+    );
+    if (result.allowed) {
+      _awaitingReminderAction = false;
+      _nightSession = _nightSession.recordAction('chooseReplacement:$replacement');
+      notifyListeners();
+    }
+    return result;
+  }
+
+  Future<StateTransitionResult> prepareForSleep() async {
+    final result = await finishSession();
+    if (result.allowed) {
+      _awaitingReminderAction = false;
+      _nightSession = _nightSession.recordAction('prepareForSleep');
+      notifyListeners();
+    }
+    return result;
+  }
+
+  Future<void> handleReminderAction(ReminderAction action) async {
+    switch (action) {
+      case ReminderAction.continueForTenMinutes:
+        await continueUsage();
+      case ReminderAction.chooseReplacement:
+        await selectReplacement(
+          AuthService.user?.replacementActivity ??
+              tonightPlan?.replacementActivity ??
+              '直接休息',
+        );
+      case ReminderAction.prepareForSleep:
+        await prepareForSleep();
+    }
+  }
+
   Future<StateTransitionResult> extendSession({int? minutes}) async {
     final plan = tonightPlan;
     final mins = minutes?.clamp(1, 240) ?? plan?.extensionMinutes ?? 10;

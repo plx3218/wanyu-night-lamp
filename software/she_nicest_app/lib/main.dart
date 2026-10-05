@@ -78,7 +78,11 @@ class _WanyuAppState extends State<WanyuApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     // 通知点击回调：用户点通知 → 跳转 session 页面 → 检查 pending 弹窗
-    NotificationService.onNotificationTap = (_) {
+    NotificationService.onNotificationTap = (payload) {
+      final action = NotificationService.actionFromPayload(payload);
+      if (action != null) {
+        unawaited(widget.controller.handleReminderAction(action));
+      }
       _navigateToSession();
       // 即使跳转失败，也用 PostFrameCallback 确保检查 pending
       WidgetsBinding.instance

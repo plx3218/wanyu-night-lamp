@@ -1,6 +1,12 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 
+enum ReminderAction {
+  continueForTenMinutes,
+  chooseReplacement,
+  prepareForSleep,
+}
+
 class NotificationService {
   static final _plugin = FlutterLocalNotificationsPlugin();
   static int _id = 100;
@@ -41,13 +47,31 @@ class NotificationService {
     onNotificationTap?.call(response.payload);
   }
 
+  static String payloadFor(ReminderAction action) =>
+      'reminder_action=${action.name}';
+
+  static ReminderAction? actionFromPayload(String? payload) {
+    const prefix = 'reminder_action=';
+    if (payload == null || !payload.startsWith(prefix)) return null;
+    final name = payload.substring(prefix.length);
+    for (final action in ReminderAction.values) {
+      if (action.name == name) return action;
+    }
+    return null;
+  }
+
   /// 阶段性推送通知（类似微信横幅通知）
   /// Importance.max + Priority.max → 触发 heads-up 横幅
   /// 用户点击通知 → 打开 App → 自动跳转 session 页面 → 弹 pending 弹窗
   ///
   /// [id] 指定通知 id，相同 id 会更新已存在的通知（用于"先发降级、AI 成功后更新"）。
   /// 不传则自增新 id（新建通知）。
-  static Future<void> showStage({required String title, required String body, int? id}) async {
+  static Future<void> showStage({
+    required String title,
+    required String body,
+    int? id,
+    ReminderAction? action,
+  }) async {
     const android = AndroidNotificationDetails(
       _channelId,
       '晚屿 · 睡前提醒',
@@ -68,7 +92,13 @@ class NotificationService {
     const platform = NotificationDetails(android: android);
     final notifyId = id ?? _id++;
     debugPrint('[NotificationService] showStage: id=$notifyId, title=$title, body=$body');
-    await _plugin.show(notifyId, title, body, platform, payload: 'navigate_session');
+    await _plugin.show(
+      notifyId,
+      title,
+      body,
+      platform,
+      payload: action == null ? 'navigate_session' : payloadFor(action),
+    );
     debugPrint('[NotificationService] showStage sent: id=$notifyId');
   }
 

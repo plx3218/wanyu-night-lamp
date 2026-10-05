@@ -102,6 +102,8 @@ class NightSession {
   final String enteredBecause;     // 调试/审计用：进入当前状态的原因描述
   final TonightPlan? plan;         // 与 AppController.tonightPlan 保持同步的本地缓存引用
 
+  final List<String> actionLog;
+
   const NightSession({
     required this.state,
     required this.enteredAt,
@@ -114,6 +116,7 @@ class NightSession {
     this.plan,
     this.observedSince,
     this.lastLampMessage,
+    this.actionLog = const [],
   });
 
   factory NightSession.initial() => NightSession(
@@ -139,6 +142,7 @@ class NightSession {
     String? lastLampMessage,
     String? enteredBecause,
     TonightPlan? plan,
+    List<String>? actionLog,
   }) =>
       NightSession(
         state: state ?? this.state,
@@ -152,6 +156,11 @@ class NightSession {
         lastLampMessage: lastLampMessage ?? this.lastLampMessage,
         enteredBecause: enteredBecause ?? this.enteredBecause,
         plan: plan ?? this.plan,
+        actionLog: actionLog ?? this.actionLog,
+      );
+
+  NightSession recordAction(String action) => copyWith(
+        actionLog: <String>[...actionLog, action],
       );
 
   // ================ 便捷派生字段（UI 直接调用）===============
@@ -195,5 +204,6 @@ class NightSession {
     'session_finished_at': finishedAt.toIso8601String(),
     'final_state': state.name,
     'plan_json': plan?.toJson(),
+    'action_log': actionLog,
   };
 }
