@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import '../models/app_usage_segment.dart';
+
 class AndroidUsageEntry {
   const AndroidUsageEntry({required this.packageName, required this.duration});
 
@@ -40,6 +42,21 @@ class AndroidUsageService {
       return AndroidUsageEntry(
         packageName: map['packageName'] as String,
         duration: Duration(milliseconds: (map['durationMs'] as num).toInt()),
+      );
+    }).toList();
+  }
+
+  static List<AppUsageSegment> parseSegments(Iterable<dynamic> raw) {
+    return raw.map((item) {
+      final map = Map<Object?, Object?>.from(item as Map);
+      return AppUsageSegment(
+        packageName: map['packageName'] as String,
+        startedAt: DateTime.fromMillisecondsSinceEpoch(
+          (map['startedAtMs'] as num).toInt(),
+        ),
+        endedAt: DateTime.fromMillisecondsSinceEpoch(
+          (map['endedAtMs'] as num).toInt(),
+        ),
       );
     }).toList();
   }
