@@ -13,6 +13,7 @@ import 'screens/register_screen.dart';
 import 'screens/session_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/usage_monitor_lab_screen.dart';
+import 'screens/usage_permission_screen.dart';
 import 'services/ai_service.dart';
 import 'services/auth_service.dart';
 import 'services/esp32_lamp_service.dart';
@@ -318,6 +319,7 @@ class _WanyuAppState extends State<WanyuApp> with WidgetsBindingObserver {
             ProfileChoiceScreen(controller: widget.controller),
         '/settings': (_) => SettingsScreen(controller: widget.controller),
         '/usage-monitor-lab': (_) => const UsageMonitorLabScreen(),
+        '/usage-permission': (_) => UsagePermissionScreen(controller: widget.controller),
         '/chat': (_) => ChatScreen(controller: widget.controller),
         '/plan': (_) => PlanScreen(controller: widget.controller),
         '/session': (_) => SessionScreen(controller: widget.controller),

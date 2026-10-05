@@ -322,6 +322,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         customHint: '自定义活动（如 写日记）',
                       ),
                       _settingCard(
+                        Icons.privacy_tip_outlined,
+                        '监测权限与数据说明',
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.security_rounded,
+                              color: AppColors.lake),
+                          title: const Text('使用情况访问权限'),
+                          subtitle: const Text('查看授权、监测窗口和降级状态'),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => Navigator.pushNamed(
+                              context, '/usage-permission'),
+                        ),
+                      ),
+                      _settingCard(
                         Icons.science_outlined,
                         'AfterHack 技术实验',
                         ListTile(

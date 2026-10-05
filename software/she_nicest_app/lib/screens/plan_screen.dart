@@ -158,6 +158,7 @@ class _PlanReadyView extends StatelessWidget {
             ],
           ),
         ),
+        _MonitorWindowCard(controller: controller),
         const SizedBox(height: 30),
         // 3 步：step 渲染完全复用 AI 生成的 time+action，不再硬编码
         for (int i = 0; i < steps.length; i++) ...[
@@ -302,6 +303,44 @@ class _PlanReadyView extends StatelessWidget {
 }
 
 /// 单步组件（连接 AI plan 的 time / title / detail）
+class _MonitorWindowCard extends StatelessWidget {
+  const _MonitorWindowCard({required this.controller});
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final schedule = controller.monitorSchedule;
+    final event = controller.lastUsageMonitorEvent;
+    final status = event?.type.name ?? 'not_started';
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg.withValues(alpha: 0.75),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.schedule_rounded, color: AppColors.lake, size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              schedule == null
+                  ? '监测时间尚未建立；没有权限时仍会执行本地计划。'
+                  : '监测：${_fmt(schedule.startAt)} 开始，目标入睡 ${_fmt(schedule.targetBedtime)}\n状态：$status · 同类娱乐连续 20 分钟提醒',
+              style: const TextStyle(color: AppColors.textSecondary, height: 1.6),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _fmt(DateTime value) =>
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+}
+
 class _PlanStep extends StatelessWidget {
   const _PlanStep({
     required this.time,
