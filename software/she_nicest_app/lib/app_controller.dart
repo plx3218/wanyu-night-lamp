@@ -13,6 +13,10 @@ import 'services/ai_service.dart';
 import 'services/auth_service.dart';
 import 'services/esp32_lamp_service.dart';
 import 'services/notification_service.dart';
+import 'services/android_usage_service.dart';
+import 'services/background_handler.dart';
+import 'services/monitor_schedule_service.dart';
+import 'services/usage_monitor_coordinator.dart';
 import 'utils/ai_response_parser.dart';
 
 /// AppController.confirmPlan 在没有 AI 生成 plan 时抛出；
@@ -33,7 +37,11 @@ class IllegalTransitionException implements Exception {
 }
 
 class AppController extends ChangeNotifier {
-  AppController(this.lamp, this.ai) {
+  AppController(this.lamp, this.ai, {UsageMonitorCoordinator? usageMonitor})
+      : usageMonitor = usageMonitor ??
+            UsageMonitorCoordinator(
+              source: AndroidUsageDataSource(AndroidUsageClient()),
+            ) {
     _lampSubscription = lamp.events.listen((event) {
       lastLampEvent = event;
       if (event.state != null) {
@@ -58,11 +66,18 @@ class AppController extends ChangeNotifier {
         notifyListeners();
       }
     });
+    FlutterForegroundTask.addTaskDataCallback(_handleForegroundTaskData);
+    _usageMonitorSubscription = this.usageMonitor.events.listen((event) {
+      lastUsageMonitorEvent = event;
+      notifyListeners();
+    });
   }
 
   final LampService lamp;
   final AiService ai;
+  final UsageMonitorCoordinator usageMonitor;
   late final StreamSubscription<LampEvent> _lampSubscription;
+  late final StreamSubscription<UsageMonitorEvent> _usageMonitorSubscription;
   LampEvent? lastLampEvent;
   LampState _lampState = LampState.initial();
   bool simulationMode = true;
@@ -130,6 +145,14 @@ class AppController extends ChangeNotifier {
   // ============ AI 计划共享状态（P0），同时与状态机本地缓存 plan 同步 ============
   TonightPlan? get tonightPlan => _nightSession.plan;
   bool get hasTonightPlan => tonightPlan != null;
+  MonitorSchedule? get monitorSchedule => usageMonitor.currentSchedule;
+  UsageMonitorEvent? lastUsageMonitorEvent;
+
+  void _handleForegroundTaskData(Object data) {
+    if (data is Map && data['type'] == 'usage_monitor_tick') {
+      unawaited(usageMonitor.refresh());
+    }
+  }
 
   void setTonightPlan(TonightPlan plan) {
     // 挂接 plan → 立即把状态机推到 PLANNED（不再是 unplanned）
@@ -146,6 +169,7 @@ class AppController extends ChangeNotifier {
     );
     _persistPlan(plan); // 本地持久化：App 重启后按钮/计划仍在
     notifyListeners();
+    unawaited(syncUsageMonitoring());
   }
 
   void clearTonightPlan() {
@@ -192,6 +216,7 @@ class AppController extends ChangeNotifier {
           plan: plan,
         );
         notifyListeners();
+        unawaited(syncUsageMonitoring());
       }
     } catch (_) {
       // 缓存损坏则忽略
@@ -1053,6 +1078,20 @@ class AppController extends ChangeNotifier {
   }
 
   /// 建档后「直接用习惯生成计划」：不经过聊天界面，静默调 AI 生成 plan
+  /// Uses the latest plan for today, or the onboarding bedtime as fallback.
+  /// The coordinator stays idle until the two-hour monitoring window begins.
+  Future<void> syncUsageMonitoring({DateTime? now}) async {
+    final profile = AuthService.user;
+    if (profile == null || usageMonitor.isRunning) return;
+    final current = now ?? DateTime.now();
+    final schedule = MonitorScheduleService.resolveFor(
+      DateTime(current.year, current.month, current.day),
+      tonightPlan,
+      profile,
+    );
+    await usageMonitor.start(schedule);
+  }
+
   Future<bool> generatePlanFromProfile() async {
     final u = AuthService.user;
     if (u == null) return false;
@@ -1103,6 +1142,9 @@ class AppController extends ChangeNotifier {
     _lampSubscription.cancel();
     _timelineTimer?.cancel();
     _stopForegroundService();
+    FlutterForegroundTask.removeTaskDataCallback(_handleForegroundTaskData);
+    _usageMonitorSubscription.cancel();
+    usageMonitor.dispose();
     lamp.dispose();
     super.dispose();
   }
@@ -1112,6 +1154,7 @@ class AppController extends ChangeNotifier {
   Future<void> _startForegroundService() async {
     try {
       await FlutterForegroundTask.startService(
+        callback: startCallback,
         notificationTitle: '晚屿',
         notificationText: '睡前时间线运行中…',
       );

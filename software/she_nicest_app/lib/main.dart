@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'app_controller.dart';
@@ -19,6 +21,7 @@ import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterForegroundTask.initCommunicationPort();
   await NotificationService.init();
   await AuthService.load(); // 恢复登录态（决定进首页还是登录页）
 
@@ -48,6 +51,7 @@ void main() async {
   // 2026-08-29 修复「看看今晚的安排」按钮消失：plan 持久化到本地，
   // App 重启后恢复，首页/聊天页按钮不再丢失。
   await controller.restoreCachedPlan();
+  await controller.syncUsageMonitoring();
   runApp(WanyuApp(controller: controller));
 }
 
@@ -130,12 +134,14 @@ class _WanyuAppState extends State<WanyuApp> with WidgetsBindingObserver {
   /// 登录成功：回首页（'/' 会按登录态重建为 HomeScreen），并把档案注入 AI 上下文
   void _onLoggedIn() {
     widget.controller.syncProfileContext();
+    unawaited(widget.controller.syncUsageMonitoring());
     globalNavigatorKey.currentState?.pushNamedAndRemoveUntil('/', (r) => false);
   }
 
   /// 注册建档成功：进入「直接生成 vs 和 AI 聊聊」选择页
   void _onRegistered() {
     widget.controller.syncProfileContext();
+    unawaited(widget.controller.syncUsageMonitoring());
     globalNavigatorKey.currentState
         ?.pushNamedAndRemoveUntil('/profile-choice', (r) => false);
   }

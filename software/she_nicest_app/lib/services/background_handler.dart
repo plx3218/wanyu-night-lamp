@@ -23,6 +23,10 @@ class EyeCareTaskHandler extends TaskHandler {
 
   @override
   void onRepeatEvent(DateTime timestamp) async {
+    FlutterForegroundTask.sendDataToMain({
+      'type': 'usage_monitor_tick',
+      'timestampMs': timestamp.millisecondsSinceEpoch,
+    });
     if (_baseUrl == null) return;
 
     try {
