@@ -167,13 +167,14 @@ class AppController extends ChangeNotifier {
   String? lastNightRecordError;
   bool _awaitingReminderAction = false;
   TonightPlan? _pendingTonightPlan;
+  bool _disposed = false;
   NightExperimentPhase experimentPhase = NightExperimentPhase.intervention;
 
   bool get remindersEnabled => experimentPhase == NightExperimentPhase.intervention;
 
   void setExperimentPhase(NightExperimentPhase phase) {
     experimentPhase = phase;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   void _handleForegroundTaskData(Object data) {
@@ -896,7 +897,7 @@ class AppController extends ChangeNotifier {
     } on NightRecordException catch (error) {
       lastNightRecordError = error.message;
     }
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   void timelineFinish() {
@@ -1371,6 +1372,7 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _lampSubscription.cancel();
     _timelineTimer?.cancel();
     _stopForegroundService();

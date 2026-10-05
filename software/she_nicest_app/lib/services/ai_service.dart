@@ -114,6 +114,9 @@ class AiService {
     return plan['extension_minutes'] is num;
   }
 
+  static bool isValidReadyPayload(Map<String, dynamic>? payload) =>
+      _isValidReadyPayload(payload);
+
   void clearHistory() {
     _history.clear();
     _profileInjected = false;
