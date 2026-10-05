@@ -46,7 +46,7 @@ void main() async {
 
   final controller = AppController(
     Esp32LampService(host: '10.106.12.6', port: 80),
-    AiService(serverUrl: 'http://121.40.96.105:8000'),
+    AiService(),
   );
   controller.syncProfileContext(); // 已登录用户：档案注入 AI 上下文
   // 2026-08-29 修复「看看今晚的安排」按钮消失：plan 持久化到本地，
@@ -320,7 +320,8 @@ class _WanyuAppState extends State<WanyuApp> with WidgetsBindingObserver {
             ProfileChoiceScreen(controller: widget.controller),
         '/settings': (_) => SettingsScreen(controller: widget.controller),
         '/usage-monitor-lab': (_) => const UsageMonitorLabScreen(),
-        '/usage-permission': (_) => UsagePermissionScreen(controller: widget.controller),
+        '/usage-permission': (_) =>
+            UsagePermissionScreen(controller: widget.controller),
         '/chat': (_) => ChatScreen(controller: widget.controller),
         '/plan': (_) => PlanScreen(controller: widget.controller),
         '/session': (_) => SessionScreen(controller: widget.controller),

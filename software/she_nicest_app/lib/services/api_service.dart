@@ -12,9 +12,36 @@ class ApiException implements Exception {
 
 class ApiService {
   ApiService._();
-  static const String baseUrl = 'http://121.40.96.105:8000';
 
-  static Map<String, String> get _jsonHeaders => {'Content-Type': 'application/json'};
+  /// Inject with `--dart-define=WANYU_API_BASE_URL=...`.
+  ///
+  /// A blank value is intentional: a build without an explicit backend must
+  /// fail with a clear configuration error instead of silently using an old
+  /// production address.
+  static const String baseUrl = String.fromEnvironment('WANYU_API_BASE_URL');
+  static const bool allowInsecureHttp =
+      String.fromEnvironment('WANYU_ALLOW_INSECURE_HTTP') == 'true';
+
+  static Uri _uri(String path) {
+    if (baseUrl.trim().isEmpty) {
+      throw ApiException('未配置后端地址，请使用 WANYU_API_BASE_URL 构建应用');
+    }
+    final parsed = Uri.tryParse(baseUrl.trim());
+    if (parsed == null || parsed.host.isEmpty || !parsed.hasScheme) {
+      throw ApiException('后端地址配置无效，请检查 WANYU_API_BASE_URL');
+    }
+    final isLocalHttp = parsed.scheme == 'http' &&
+        (parsed.host == 'localhost' ||
+            parsed.host == '127.0.0.1' ||
+            parsed.host == '::1');
+    if (parsed.scheme != 'https' && !(allowInsecureHttp || isLocalHttp)) {
+      throw ApiException('正式环境仅允许 HTTPS；本地调试 HTTP 需显式开启');
+    }
+    return parsed.resolve(path);
+  }
+
+  static Map<String, String> get _jsonHeaders =>
+      {'Content-Type': 'application/json'};
   static Map<String, String> _authHeaders(String token) => {
         ..._jsonHeaders,
         'Authorization': 'Bearer $token',
@@ -24,7 +51,8 @@ class ApiService {
     if (resp.statusCode >= 400) {
       try {
         final data = jsonDecode(resp.body);
-        throw ApiException((data['error'] as String?) ?? '请求失败（${resp.statusCode}）');
+        throw ApiException(
+            (data['error'] as String?) ?? '请求失败（${resp.statusCode}）');
       } on ApiException {
         rethrow;
       } catch (_) {
@@ -36,7 +64,8 @@ class ApiService {
   static AuthSession _parseSession(String body) {
     final data = jsonDecode(body);
     final token = (data['token'] as String?) ?? '';
-    final user = UserProfile.fromJson((data['user'] as Map<String, dynamic>?) ?? const {});
+    final user = UserProfile.fromJson(
+        (data['user'] as Map<String, dynamic>?) ?? const {});
     if (token.isEmpty) throw ApiException('服务器返回异常，请重试');
     return AuthSession(token: token, user: user);
   }
@@ -52,7 +81,7 @@ class ApiService {
   }) async {
     final resp = await http
         .post(
-          Uri.parse('$baseUrl/api/auth/register'),
+          _uri('/api/auth/register'),
           headers: _jsonHeaders,
           body: jsonEncode({
             'username': username,
@@ -71,7 +100,7 @@ class ApiService {
   static Future<AuthSession> login(String username, String password) async {
     final resp = await http
         .post(
-          Uri.parse('$baseUrl/api/auth/login'),
+          _uri('/api/auth/login'),
           headers: _jsonHeaders,
           body: jsonEncode({'username': username, 'password': password}),
         )
@@ -83,7 +112,7 @@ class ApiService {
   static Future<void> logout(String token) async {
     try {
       await http
-          .post(Uri.parse('$baseUrl/api/auth/logout'), headers: _authHeaders(token))
+          .post(_uri('/api/auth/logout'), headers: _authHeaders(token))
           .timeout(const Duration(seconds: 10));
     } catch (_) {
       // 登出失败不影响本地清理
@@ -92,11 +121,12 @@ class ApiService {
 
   static Future<UserProfile> fetchProfile(String token) async {
     final resp = await http
-        .get(Uri.parse('$baseUrl/api/profile'), headers: _authHeaders(token))
+        .get(_uri('/api/profile'), headers: _authHeaders(token))
         .timeout(const Duration(seconds: 15));
     _throwIfError(resp);
     final data = jsonDecode(resp.body);
-    return UserProfile.fromJson((data['user'] as Map<String, dynamic>?) ?? const {});
+    return UserProfile.fromJson(
+        (data['user'] as Map<String, dynamic>?) ?? const {});
   }
 
   /// 更新档案：传 null 的字段保持原值（服务端 pick）
@@ -108,16 +138,26 @@ class ApiService {
     String? replacementActivity,
   }) async {
     final body = <String, dynamic>{};
-    if (bedtime != null) body['bedtime'] = bedtime;
-    if (wakeTime != null) body['wakeTime'] = wakeTime;
-    if (apps != null) body['apps'] = apps;
-    if (replacementActivity != null) body['replacementActivity'] = replacementActivity;
+    if (bedtime != null) {
+      body['bedtime'] = bedtime;
+    }
+    if (wakeTime != null) {
+      body['wakeTime'] = wakeTime;
+    }
+    if (apps != null) {
+      body['apps'] = apps;
+    }
+    if (replacementActivity != null) {
+      body['replacementActivity'] = replacementActivity;
+    }
     final resp = await http
-        .put(Uri.parse('$baseUrl/api/profile'), headers: _authHeaders(token), body: jsonEncode(body))
+        .put(_uri('/api/profile'),
+            headers: _authHeaders(token), body: jsonEncode(body))
         .timeout(const Duration(seconds: 15));
     _throwIfError(resp);
     final data = jsonDecode(resp.body);
-    return UserProfile.fromJson((data['user'] as Map<String, dynamic>?) ?? const {});
+    return UserProfile.fromJson(
+        (data['user'] as Map<String, dynamic>?) ?? const {});
   }
 
   /// Uploads only an already-aggregated daily summary after explicit consent.
@@ -132,7 +172,7 @@ class ApiService {
     }
     final resp = await http
         .post(
-          Uri.parse('$baseUrl/api/v1/usage/summary'),
+          _uri('/api/v1/usage/summary'),
           headers: _authHeaders(token),
           body: jsonEncode({'consent': true, 'summary': summary}),
         )

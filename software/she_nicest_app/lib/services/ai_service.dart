@@ -6,12 +6,34 @@ import 'fallback_plan_service.dart';
 import '../utils/ai_response_parser.dart';
 
 class AiService {
-  AiService({this.serverUrl = 'http://121.40.96.105:8000'});
+  AiService({String? serverUrl})
+      : serverUrl =
+            serverUrl ?? const String.fromEnvironment('WANYU_API_BASE_URL');
 
   final String serverUrl;
   final List<Map<String, String>> _history = [];
   String? _profileContext;
   bool _profileInjected = false;
+
+  Uri _chatUri() {
+    if (serverUrl.trim().isEmpty) {
+      throw StateError('未配置后端地址，请使用 WANYU_API_BASE_URL 构建应用');
+    }
+    final parsed = Uri.tryParse(serverUrl.trim());
+    if (parsed == null || parsed.host.isEmpty || !parsed.hasScheme) {
+      throw StateError('后端地址配置无效，请检查 WANYU_API_BASE_URL');
+    }
+    const allowInsecureHttp =
+        String.fromEnvironment('WANYU_ALLOW_INSECURE_HTTP') == 'true';
+    final isLocalHttp = parsed.scheme == 'http' &&
+        (parsed.host == 'localhost' ||
+            parsed.host == '127.0.0.1' ||
+            parsed.host == '::1');
+    if (parsed.scheme != 'https' && !(allowInsecureHttp || isLocalHttp)) {
+      throw StateError('正式环境仅允许 HTTPS；本地调试 HTTP 需显式开启');
+    }
+    return parsed.resolve('/chat');
+  }
 
   /// 登录/建档后注入用户档案上下文；首轮对话自动带入，clearHistory 后重新注入
   void setProfileContext(String? context) {
@@ -27,7 +49,7 @@ class AiService {
     }
     _history.add({'role': 'user', 'content': userMessage});
 
-    final request = http.Request('POST', Uri.parse('$serverUrl/chat'))
+    final request = http.Request('POST', _chatUri())
       ..headers['Content-Type'] = 'application/json'
       ..body = jsonEncode({'messages': _history});
 
@@ -67,7 +89,8 @@ class AiService {
     final generatedAt = now ?? DateTime.now();
     try {
       var full = '';
-      await for (final chunk in chat(prompt).timeout(const Duration(seconds: 12))) {
+      await for (final chunk
+          in chat(prompt).timeout(const Duration(seconds: 12))) {
         full += chunk;
       }
       final payload = extractPlanPayload(full);

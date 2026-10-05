@@ -30,11 +30,51 @@ android {
         versionName = flutter.versionName
     }
 
+    val releaseStoreFile = System.getenv("WANYU_RELEASE_STORE_FILE")
+    val releaseStorePassword = System.getenv("WANYU_RELEASE_STORE_PASSWORD")
+    val releaseKeyAlias = System.getenv("WANYU_RELEASE_KEY_ALIAS")
+    val releaseKeyPassword = System.getenv("WANYU_RELEASE_KEY_PASSWORD")
+    val releaseSigningConfigured = listOf(
+        releaseStoreFile,
+        releaseStorePassword,
+        releaseKeyAlias,
+        releaseKeyPassword,
+    ).all { !it.isNullOrBlank() }
+
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+
+    tasks.register("assertReleaseSigningConfigured") {
+        doLast {
+            if (!releaseSigningConfigured) {
+                throw GradleException(
+                    "Release signing is not configured. Set WANYU_RELEASE_STORE_FILE, " +
+                        "WANYU_RELEASE_STORE_PASSWORD, WANYU_RELEASE_KEY_ALIAS, and " +
+                        "WANYU_RELEASE_KEY_PASSWORD before building a release artifact.",
+                )
+            }
+        }
+    }
+
+    tasks.configureEach {
+        if (name == "assembleRelease" || name == "bundleRelease") {
+            dependsOn("assertReleaseSigningConfigured")
         }
     }
 }
