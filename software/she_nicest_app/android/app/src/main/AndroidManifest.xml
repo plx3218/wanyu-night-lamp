@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- AfterHack 技术实验：由用户在系统设置中主动开启“使用情况访问”。 -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <application
         android:label="晚屿"
         android:name="${applicationName}"

@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-/// 毛玻璃弹窗 — 对应设计稿"收尾弹窗 · 毛玻璃版"
+/// 毛玻璃弹窗 — 对应设计稿"入睡提醒弹窗 · 毛玻璃版"
 /// 通过参数区分不同状态（第一次问 / 再问 / 信息弹窗）
 class FrostedSessionDialog extends StatelessWidget {
   const FrostedSessionDialog({

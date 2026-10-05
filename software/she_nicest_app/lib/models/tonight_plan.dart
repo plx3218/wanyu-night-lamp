@@ -240,11 +240,11 @@ class TonightPlan {
     return '• ' + assumptions.map((e) => e.trim()).where((e) => e.isNotEmpty).join('\n• ');
   }
 
-  /// PlanScreen 顶部副标题格式：明早 07:30 起床。今晚可以在 23:30 左右收尾，不必立刻放下手机。
+  /// PlanScreen 顶部副标题格式：明早 07:30 起床。今晚可以在 23:30 左右准备入睡，不必立刻放下手机。
   String displayHeadline() {
     final wakeDisplay = _friendlyTime(wakeTime);
     final bedDisplay = _friendlyTime(recommendedBedtime);
-    return '明早 $wakeDisplay 起床。今晚可以在 $bedDisplay 左右收尾，不必立刻放下手机。';
+    return '明早 $wakeDisplay 起床。今晚可以在 $bedDisplay 左右准备入睡，不必立刻放下手机。';
   }
 
   String displayThresholdText() {

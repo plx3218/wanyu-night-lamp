@@ -1,7 +1,7 @@
 name: she_nicest_app
 description: 睡前 AI 陪伴与晚风灯联动 Demo
 publish_to: none
-version: 2.0.0+1
+version: 2.2.2+2
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

@@ -11,7 +11,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 
-SYSTEM_PROMPT = """你是 SheNicest 的睡前时间规划助手。
+SYSTEM_PROMPT = """你是「晚屿」的睡前时间规划助手。
 
 你的职责不是催促、批评或管教用户，而是根据用户今晚的状态、当前时间和明早安排，帮助用户制定一个温和、可执行、最多 3 步的睡前计划。
 
@@ -60,7 +60,7 @@ SYSTEM_PROMPT = """你是 SheNicest 的睡前时间规划助手。
 
 规划原则：
 - 优先保证用户明早安排和合理睡眠时间。
-- 不强迫用户立刻睡觉，允许设置明确的缓冲和收尾时间。
+- 不强迫用户立刻睡觉，允许设置明确的缓冲和入睡时间。
 - 计划最多 3 步，每一步必须有具体时间和明确动作。
 - 用户不接受建议时，提供更轻量的替代方案。
 - 不评价用户是否自律，不制造羞耻、焦虑或睡眠压力。
@@ -100,7 +100,7 @@ SYSTEM_PROMPT = """你是 SheNicest 的睡前时间规划助手。
 }"""
 
 FALLBACK_PLAN = {
-    "reply": "我先按简单方案帮你安排。今晚给自己留一点收尾时间就好。",
+    "reply": "我先按简单方案帮你安排。今晚给自己留一点入睡时间就好。",
     "status": "ready",
     "question": None,
     "plan": {
@@ -474,7 +474,7 @@ def validate_and_fix_times(data: dict) -> dict:
         # 收紧到 now + 75 分钟（留 15 分钟缓冲让用户进入计划）
         new_bed = now + timedelta(minutes=75)
         bed_dt = new_bed
-        assumptions_out.append(f"建议收尾时间从原来的 {_fmt(plan.get('recommended_bedtime', ''))} 收紧到 {_fmt(bed_dt)}（总跨度不超过 90 分钟）")
+        assumptions_out.append(f"建议入睡时间从原来的 {_fmt(plan.get('recommended_bedtime', ''))} 收紧到 {_fmt(bed_dt)}（总跨度不超过 90 分钟）")
 
     # (b) wind_down / reminder 强制在 now 之后且不超过 bedtime - 10
     if _is_past(wind_dt) or _mins_between(wind_dt, bed_dt) > 45 or _mins_between(now, wind_dt) > 15:
@@ -488,7 +488,7 @@ def validate_and_fix_times(data: dict) -> dict:
     #     把 steps 按数量均匀分布到 [wind_dt, bed_dt]
     if steps:
         n = len(steps)
-        # 最后一个 step 放在 bedtime 前 5 分钟以内（收尾动作）
+        # 最后一个 step 放在 bedtime 前 5 分钟以内（入睡前动作）
         last_dt = bed_dt - timedelta(minutes=5)
         # 中间的 step 均匀分布在 wind_dt ~ last_dt 之间
         if n == 1:
@@ -518,7 +518,7 @@ def validate_and_fix_times(data: dict) -> dict:
         bed_dt = wake_dt - timedelta(hours=8)
         if _mins_between(now, bed_dt) > 90:
             bed_dt = now + timedelta(minutes=75)
-        assumptions_out.append("睡眠时间不足 6 小时，已把建议收尾时间前移保证休息")
+        assumptions_out.append("睡眠时间不足 6 小时，已把建议入睡时间前移保证休息")
     elif sleep_hrs > 9:
         # 睡眠太多：适度收紧（最多收到 8.5h）
         bed_dt = wake_dt - timedelta(hours=8, minutes=30)
@@ -699,7 +699,7 @@ async def health():
 
 # ==================== 个性化通知生成 ====================
 
-NOTIFY_SYSTEM_PROMPT = """你是 SheNicest 的睡前通知文案生成器。根据用户的入睡计划和聊天记录，生成一条个性化的推送通知。
+NOTIFY_SYSTEM_PROMPT = """你是「晚屿」的睡前通知文案生成器。根据用户的入睡计划和聊天记录，生成一条个性化的推送通知。
 
 【输入】你会收到一个 JSON，包含：
 - stage: 当前阶段（wind_down=入睡前提醒, agenda=今晚日程, bedtime=到点入睡, extended=延时后）
@@ -722,7 +722,7 @@ NOTIFY_SYSTEM_PROMPT = """你是 SheNicest 的睡前通知文案生成器。根�
 10. 缺少个性化信息时逐级降级，只使用已有信息，不允许补写虚假细节
 
 【各阶段重点】
-- wind_down: 重点提醒目标入睡时间，结合还没完成的事情提示开始收尾
+- wind_down: 重点提醒目标入睡时间，结合还没完成的事情提示准备入睡
 - agenda: 根据剩余事项，提醒用户接下来做一件最具体的事情
 - bedtime: 到达目标入睡时间后，结合计划完成情况提醒用户睡觉
 - extended: 结合原定入睡时间、起床时间和累计延时时长生成
@@ -736,15 +736,15 @@ NOTIFY_SYSTEM_PROMPT = """你是 SheNicest 的睡前通知文案生成器。根�
 
 【降级规则】
 如果信息不足，使用已有信息生成，不要编造。完全没有信息时返回：
-{"title": "今晚，慢一点", "body": "时间不早了，慢慢收尾吧。", "used_fields": []}
+{"title": "晚屿", "body": "时间不早了，慢慢准备入睡吧。", "used_fields": []}
 """
 
 # 各阶段降级文案
 FALLBACK_NOTIFY = {
-    "wind_down": {"title": "今晚，慢一点", "body": "时间不早了，可以慢慢收尾了。"},
-    "agenda": {"title": "今晚，慢一点", "body": "接下来做一件最重要的事就好。"},
-    "bedtime": {"title": "今晚，慢一点", "body": "到时间了，去睡吧。"},
-    "extended": {"title": "今晚，慢一点", "body": "已经比计划晚了，今晚就到这里吧。"},
+    "wind_down": {"title": "晚屿", "body": "时间不早了，可以慢慢准备入睡了。"},
+    "agenda": {"title": "晚屿", "body": "接下来做一件最重要的事就好。"},
+    "bedtime": {"title": "晚屿", "body": "到时间了，去睡吧。"},
+    "extended": {"title": "晚屿", "body": "已经比计划晚了，今晚就到这里吧。"},
 }
 
 
@@ -805,3 +805,8 @@ chat_summary: {chat_summary}
     except Exception as e:
         fb = FALLBACK_NOTIFY.get(stage, FALLBACK_NOTIFY["wind_down"])
         return {"title": fb["title"], "body": fb["body"], "used_fields": [], "source": f"fallback_error: {str(e)[:100]}"}
+
+
+@app.get("/api/health")
+async def api_health():
+    return {"status": "ok", "service": "wanyu"}

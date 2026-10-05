@@ -12,6 +12,8 @@ import 'services/lamp_service.dart';
 import 'services/ai_service.dart';
 import 'services/esp32_lamp_service.dart';
 import 'services/notification_service.dart';
+import 'services/profile_service.dart';
+import 'utils/ai_response_parser.dart';
 
 /// AppController.confirmPlan 在没有 AI 生成 plan 时抛出；
 /// UI 层捕获后应该引导用户回到聊天页和 AI 先聊一轮再回来。
@@ -85,7 +87,7 @@ class AppController extends ChangeNotifier {
   }
 
   // ====================== 新增：NightSession 状态机 ======================
-  // 全局演示加速：1 分钟 = 1 秒（现场演示用，保证每个阶段都在几秒内看到效果）
+  // 后台永久开启演示加速：现实 1 分钟按 1 秒运行，不在界面显示开关。
   static const int kDemoTimeDivisor = 60;
   static int minutesToDemoSeconds(int minutes) {
     if (minutes <= 0) return 0;
@@ -152,7 +154,7 @@ class AppController extends ChangeNotifier {
   }
 
   // ============ plan 本地持久化（修复「看看今晚的安排」按钮重启后消失）============
-  static const String _kPlanCacheKey = 'shenicest_tonight_plan_cache';
+  static const String _kPlanCacheKey = 'wanyu_tonight_plan_cache';
 
   Future<void> _persistPlan(TonightPlan? plan) async {
     try {
@@ -377,7 +379,6 @@ class AppController extends ChangeNotifier {
   ///   1) 同步更新本地状态机 + 通知 UI（让 PlanScreen 立刻 push SessionScreen，不再卡顿）
   ///   2) 命令异步在后台发；失败时写个 lastLampMessage 提醒（不挡 UI）
   /// 这样用户体感是「点完 100ms 内就跳转」，不会因 HTTP 超时等待 3~5 秒。
-  @override
   Future<void> confirmPlan() async {
     final plan = tonightPlan;
     if (plan == null) throw const PlanNotReadyException();
@@ -489,7 +490,7 @@ class AppController extends ChangeNotifier {
     final t50 = n > 1 ? steps[1].time : plan.reminderTime;
     final tAsk = n > 1 ? steps.last.time : plan.recommendedBedtime;
     final a1 = n > 0 ? steps.first.action : '进入睡眠准备';
-    final a2 = n > 1 ? steps[1].action : '灯光调暗，慢慢收尾';
+    final a2 = n > 1 ? steps[1].action : '灯光调暗，慢慢准备入睡';
 
     // 演示秒（1 分钟 = 1 秒），并保证相邻事件至少间隔 6 秒（渐变才看得清）
     int d1 = _demoSecFromNowTo(t70, floor: 2);
@@ -516,7 +517,7 @@ class AppController extends ChangeNotifier {
       _TlEvent(
         delaySec: d3,
         planTime: tAsk,
-        label: '到了计划收尾时刻',
+        label: '到了计划入睡提醒时间',
         brightness: null, // 保持 50% 不变
         command: null,
         state: NightSessionState.nudged,
@@ -577,7 +578,7 @@ class AppController extends ChangeNotifier {
   static const _fallbackNotify = {
     'wind_down': {'title': '晚屿', 'body': '放下手边的事，靠一靠'},
     'agenda': {'title': '晚屿', 'body': '准备结束今天，要睡觉啦'},
-    'bedtime': {'title': '晚屿', 'body': '到了收尾时刻，需要延时么'},
+    'bedtime': {'title': '晚屿', 'body': '到了入睡提醒时间，需要延时么'},
     'extended': {'title': '晚屿', 'body': '已经比计划晚了，今晚就到这里吧'},
   };
 
@@ -727,7 +728,7 @@ class AppController extends ChangeNotifier {
     });
   }
 
-  /// 时间线收尾：平滑渐变到 5% 夜灯
+  /// 时间线结束：平滑渐变到 5% 夜灯
   void timelineFinish() {
     _timelineRunning = false;
     _timelineTimer?.cancel();
@@ -740,7 +741,7 @@ class AppController extends ChangeNotifier {
     final bedBright = tonightPlan?.lightLevelBedtime ?? 5;
     _applyStateLocally(
       NightSessionState.finished,
-      because: '今晚收尾，5% 夜灯陪你入睡',
+      because: '进入入睡陪伴，5% 夜灯陪你入睡',
       brightness: bedBright,
     );
     _fireCommand(LampCommandId.finish, brightness: bedBright);
@@ -891,7 +892,7 @@ class AppController extends ChangeNotifier {
 
   /// 用户说"结束今天/现在准备睡"
   Future<StateTransitionResult> finishSession() async {
-    // 手动收尾 → 停掉时间线引擎（不再自动推进）
+    // 手动结束今晚计划 → 停掉时间线引擎（不再自动推进）
     _timelineRunning = false;
     _timelineTimer?.cancel();
     _timelineTimer = null;
@@ -962,7 +963,6 @@ class AppController extends ChangeNotifier {
   }
 
   /// 完全重置：回到 UNPLANNED（不清除 plan，让 setTonightPlan 被新的覆盖）
-  @override
   Future<void> resetSession() async {
     // 停掉时间线引擎（重置后不再自动推进灯光）
     _timelineRunning = false;
@@ -1033,6 +1033,44 @@ class AppController extends ChangeNotifier {
 
   /// 清空 AI 对话历史
   void clearAiHistory() => ai.clearHistory();
+
+  // ============ 用户档案 → AI 上下文 ============
+
+  /// 登录/建档/档案编辑后调用：把最新档案注入 AI 对话上下文
+  void syncProfileContext() {
+    final u = ProfileService.profile;
+    ai.setProfileContext(
+      '（我的睡眠档案）我通常 ${u.bedtime} 入睡，${u.wakeTime} 起床，'
+      '睡前常刷${u.apps.isEmpty ? '手机（没有特别偏好）' : u.apps}，'
+      '喜欢的睡前替代活动是${u.replacementActivity}。'
+      '请把我的习惯作为默认安排，除非我今晚另外说明。',
+    );
+  }
+
+  /// 建档后「直接用习惯生成计划」：不经过聊天界面，静默调 AI 生成 plan
+  Future<bool> generatePlanFromProfile() async {
+    final u = ProfileService.profile;
+    try {
+      final prompt =
+          '请根据我的睡眠档案直接生成今晚的计划：我通常 ${u.bedtime} 入睡，${u.wakeTime} 起床，'
+          '睡前常刷${u.apps.isEmpty ? '手机' : u.apps}，喜欢的替代活动是${u.replacementActivity}。'
+          '今晚就按我的习惯来，直接给计划，不要问我问题。';
+      String full = '';
+      await for (final chunk in ai.chat(prompt)) {
+        full += chunk;
+      }
+      final payload = extractPlanPayload(full);
+      final plan = payload?['plan'];
+      if (payload != null && payload['status'] == 'ready' && plan is Map<String, dynamic>) {
+        setTonightPlan(TonightPlan.fromServerJson(payload));
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('[AppController] 档案生成计划失败: $e');
+      return false;
+    }
+  }
 
   // ================ 辅助工具 ================
 

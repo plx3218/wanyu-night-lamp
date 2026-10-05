@@ -6,6 +6,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../app_controller.dart';
 import '../models/tonight_plan.dart';
 import '../theme/app_theme.dart';
+import '../utils/ai_response_parser.dart';
 
 class ChatMessage {
   final bool isUser;
@@ -13,63 +14,6 @@ class ChatMessage {
   final bool isPlan;
   final Map<String, dynamic>? planData;
   ChatMessage({required this.isUser, required this.text, this.isPlan = false, this.planData});
-}
-
-/// 从混合文本（自然语言 + JSON + 分隔符）中提取「最后一个合法的平衡 {} JSON 对象」
-/// 等价于 server.py 的 extract_json，避免服务器追加修正 JSON 时被前置内容干扰
-Map<String, dynamic>? extractLastJson(String text) {
-  final src = text;
-  final candidates = <Map<String, dynamic>>[];
-  int searchFrom = 0;
-  while (true) {
-    final start = src.indexOf('{', searchFrom);
-    if (start == -1) break;
-    int depth = 0;
-    int end = -1;
-    bool inStr = false;
-    bool escape = false;
-    for (int i = start; i < src.length; i++) {
-      final ch = src[i];
-      if (escape) {
-        escape = false;
-        continue;
-      }
-      if (ch == '\\') {
-        escape = true;
-        continue;
-      }
-      if (ch == '"') {
-        inStr = !inStr;
-        continue;
-      }
-      if (!inStr) {
-        if (ch == '{') depth++;
-        else if (ch == '}') {
-          depth--;
-          if (depth == 0) {
-            end = i;
-            break;
-          }
-        }
-      }
-    }
-    if (end != -1) {
-      try {
-        final obj = jsonDecode(src.substring(start, end + 1));
-        if (obj is Map<String, dynamic>) {
-          candidates.add(obj);
-        }
-      } catch (_) {
-        // 跳过无效 JSON
-      }
-      searchFrom = end + 1;
-    } else {
-      // 没有匹配的 }，跳出避免死循环
-      break;
-    }
-  }
-  if (candidates.isEmpty) return null;
-  return candidates.last; // 服务器如果补发了修正 JSON，它一定在最后
 }
 
 /// 清理流式结尾多余的 \n\n 分隔符和半截 JSON
@@ -111,68 +55,6 @@ String cleanDisplayText(String raw) {
     if (v.trim().isNotEmpty) return v.trim();
   }
   return s;
-}
-
-/// 从可能不完整的文本中用 regex 提取 JSON 字段（fallback 方案）
-/// 当 extractLastJson 失败（JSON 不完整/格式异常）时使用
-Map<String, dynamic>? extractFieldsFromText(String text) {
-  // 提取 status
-  final statusMatch = RegExp(r'"status"\s*:\s*"(\w+)"').firstMatch(text);
-  final status = statusMatch?.group(1);
-  // 提取 reply（支持不完整值）
-  final replyMatch = RegExp(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)"').firstMatch(text);
-  final reply = replyMatch?.group(1);
-  // 必须至少有 status 或 reply 才认为匹配成功
-  if (status == null && reply == null) return null;
-  // 提取 question
-  final questionMatch = RegExp(r'"question"\s*:\s*(?:"((?:[^"\\]|\\.)*)"|null)').firstMatch(text);
-  final question = questionMatch?.group(1);
-  // 提取 plan 的原始 JSON 字符串（嵌套 {} 需要平衡匹配）
-  String? planRaw;
-  final planIdx = text.indexOf('"plan"');
-  if (planIdx != -1) {
-    final colonIdx = text.indexOf(':', planIdx + 6);
-    if (colonIdx != -1) {
-      final after = text.substring(colonIdx + 1).trimLeft();
-      if (after.startsWith('{')) {
-        int depth = 0;
-        int end = -1;
-        bool inStr = false;
-        bool escape = false;
-        for (int i = 0; i < after.length; i++) {
-          final ch = after[i];
-          if (escape) { escape = false; continue; }
-          if (ch == '\\') { escape = true; continue; }
-          if (ch == '"') { inStr = !inStr; continue; }
-          if (!inStr) {
-            if (ch == '{') depth++;
-            else if (ch == '}') { depth--; if (depth == 0) { end = i; break; } }
-          }
-        }
-        if (end != -1) {
-          planRaw = after.substring(0, end + 1);
-        } else if (depth > 0) {
-          // plan 的 JSON 不完整，但尝试解析已收到的部分
-          planRaw = after.substring(0);
-        }
-      }
-    }
-  }
-  Map<String, dynamic>? plan;
-  if (planRaw != null) {
-    try {
-      final p = jsonDecode(planRaw);
-      if (p is Map<String, dynamic>) plan = p;
-    } catch (_) {
-      // plan JSON 不完整，跳过
-    }
-  }
-  return {
-    'reply': reply,
-    'status': status,
-    'question': question,
-    'plan': plan,
-  };
 }
 
 /// 返回 (start, endExclusive, parsedJson) 或 null

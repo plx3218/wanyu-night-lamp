@@ -162,7 +162,7 @@ class NightSession {
       case NightSessionState.unplanned: return '未生成计划';
       case NightSessionState.planned: return '计划就绪';
       case NightSessionState.observing: return '温柔守护中';
-      case NightSessionState.nudged: return '该收尾啦';
+      case NightSessionState.nudged: return '该准备休息啦';
       case NightSessionState.replacing: return '替代活动中';
       case NightSessionState.extending: return '再陪我一会儿';
       case NightSessionState.finished: return '晚安，今天就到这里';

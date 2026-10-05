@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../app_controller.dart';
-import '../services/esp32_lamp_service.dart';
 import '../theme/app_theme.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -165,7 +164,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 10),
+                  // === Badge: AI 睡前陪伴 · 软硬协同 ===
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.moon.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: AppColors.moon.withValues(alpha: 0.3)),
+                      ),
+                      child: const Text(
+                        'AI 睡前陪伴 · 软硬协同',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: AppColors.moon, letterSpacing: 0.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
                   // === 设备配对输入框（按 UI-Design-Final 02 规范） ===
                   _IpPairingCard(
                     controller: _ipController,
@@ -175,23 +190,37 @@ class _HomeScreenState extends State<HomeScreen> {
                     message: _connectMessage,
                     onConnect: _handleConnectToggle,
                   ),
-                  const SizedBox(height: 14),
-                  // === 主空间欢迎语 ===
+                  // === 主空间：时间 + 欢迎语 ===
                   const Spacer(),
-                  const Text(
-                    '晚屿',
-                    style: TextStyle(fontSize: 40, fontWeight: FontWeight.w500, height: 1.15, letterSpacing: 0.5),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '洱海的风已经安静下来。\n想说点什么，我在。',
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          color: AppColors.textSecondary,
-                          height: 1.6,
+                  StreamBuilder(
+                    stream: Stream.periodic(const Duration(seconds: 1)),
+                    builder: (context, _) {
+                      final now = DateTime.now();
+                      final hh = now.hour.toString().padLeft(2, '0');
+                      final mm = now.minute.toString().padLeft(2, '0');
+                      return Text(
+                        '$hh:$mm',
+                        style: TextStyle(
+                          fontSize: 56,
+                          fontWeight: FontWeight.w300,
+                          height: 1.0,
+                          color: AppColors.textPrimary.withValues(alpha: 0.9),
                         ),
+                      );
+                    },
                   ),
-                  const SizedBox(height: 24),
-                  // === 进入 AI 对话（按 UI-Design-Final 01 首页交互） ===
+                  const SizedBox(height: 20),
+                  const Text(
+                    '今晚想从哪里说起?',
+                    style: TextStyle(fontSize: 26, fontWeight: FontWeight.w600, height: 1.3),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '我在这里，慢慢说就好',
+                    style: TextStyle(fontSize: 16, color: AppColors.textSecondary, height: 1.5),
+                  ),
+                  const SizedBox(height: 28),
+                  // === 轻触画面开始（进入 AI 对话） ===
                   Semantics(
                     button: true,
                     label: '进入 AI 对话，获取今日睡前规划',
@@ -199,8 +228,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(26),
                       onTap: () => Navigator.pushNamed(context, '/chat'),
                       child: Ink(
-                        height: 72,
-                        padding: const EdgeInsets.symmetric(horizontal: 22),
+                        height: 60,
+                        padding: const EdgeInsets.symmetric(horizontal: 28),
                         decoration: BoxDecoration(
                           color: const Color(0xD91B3037),
                           borderRadius: BorderRadius.circular(26),
@@ -214,19 +243,11 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                         child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: const [
-                            Expanded(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text('和我聊聊，规划今晚的收尾', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                                  SizedBox(height: 2),
-                                  Text('最多 3 步，温和可调整', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                                ],
-                              ),
-                            ),
-                            Icon(Icons.arrow_forward_rounded, color: AppColors.moon, size: 26),
+                            Icon(Icons.mic_rounded, color: AppColors.moon, size: 22),
+                            SizedBox(width: 10),
+                            Text('轻触画面开始', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ),
@@ -242,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (!hasPlan) return const SizedBox.shrink();
                       String sub;
                       try {
-                        sub = '明早 ${plan!.wakeTime.replaceFirst(RegExp(r'^0'), '')} 起 · ${plan.steps.length} 步收尾';
+                        sub = '明早 ${plan!.wakeTime.replaceFirst(RegExp(r'^0'), '')} 起 · ${plan.steps.length} 步睡前安排';
                       } catch (_) {
                         sub = '已生成专属睡前安排';
                       }
@@ -468,11 +489,9 @@ class _AppDrawer extends StatelessWidget {
     return Drawer(
       backgroundColor: const Color(0xFF162930),
       child: SafeArea(
-        child: Padding(
+        child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          children: [
               Row(
                 children: [
                   Container(
@@ -488,9 +507,9 @@ class _AppDrawer extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: const [
-                      Text('今晚', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                      Text('晚屿', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
                       SizedBox(height: 2),
-                      Text('SheNicest · 睡前陪伴', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                      Text('WANYU · 睡前陪伴', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
                     ],
                   ),
                 ],
@@ -532,6 +551,34 @@ class _AppDrawer extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               const _DrawerLabel('设备与设置'),
+              ListTile(
+                leading: const Icon(Icons.person_outline_rounded, color: AppColors.textSecondary),
+                title: const Text('个人设置 · 睡眠档案'),
+                subtitle: Text(
+                  '本地保存，不需要账号',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                ),
+                minLeadingWidth: 0,
+                contentPadding: EdgeInsets.zero,
+                horizontalTitleGap: 12,
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/settings');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.tune_rounded, color: AppColors.textSecondary),
+                title: const Text('重新设置睡眠档案'),
+                subtitle: const Text('用向导快速更新习惯',
+                    style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                minLeadingWidth: 0,
+                contentPadding: EdgeInsets.zero,
+                horizontalTitleGap: 12,
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/profile-setup');
+                },
+              ),
               ListTile(
                 leading: const Icon(Icons.light_outlined, color: AppColors.textSecondary),
                 title: const Text('我的晚风灯'),
@@ -575,7 +622,6 @@ class _AppDrawer extends StatelessWidget {
                   }
                 },
               ),
-              const Spacer(),
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -607,9 +653,8 @@ class _AppDrawer extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              const Text('v2.0.0 · SheNicest MVP', style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+              const Text('v2.2.2 · WANYU', style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
             ],
-          ),
         ),
       ),
     );
